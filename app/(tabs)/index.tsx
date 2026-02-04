@@ -1,149 +1,252 @@
-// app/(tabs)/index.tsx
-
-import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Alert, Platform } from 'react-native';
-import SoberCounter from '../../src/components/SoberCounter'; 
-import { useFocusEffect } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const STORAGE_KEY = 'SoberStartDate';
-
-// Wetenschappelijke info per mijlpaal
-const MILESTONES = [
-  { 
-    days: 1, label: 'Eerste Stap', icon: '🌱', 
-    info: "Je lever is hard aan het werk om alle gifstoffen te verwerken. Na 24 uur begint je bloedsuikerspiegel te stabiliseren en neemt de ontstekingswaarde in je lichaam al af." 
-  },
-  { 
-    days: 3, label: 'Doorzetter', icon: '🔋', 
-    info: "De meeste fysieke ontwenningsverschijnselen pieken nu. Je lichaam is officieel alcoholvrij. Je hydratatie verbetert en je nieren functioneren efficiënter." 
-  },
-  { 
-    days: 7, label: 'Eerste Week', icon: '🏆', 
-    info: "Je slaapkwaliteit verbetert drastisch (meer REM-slaap). Je hersenen beginnen de receptoren te herstellen die door alcohol verdoofd waren. Je hebt meer energie." 
-  },
-  { 
-    days: 30, label: 'Maandkracht', icon: '💎', 
-    info: "Je levervet kan met wel 15% zijn afgenomen. Je huid ziet er gezonder uit en je mentale 'mist' is grotendeels verdwenen. Je dopaminesysteem begint te normaliseren." 
-  },
-  { 
-    days: 100, label: 'Eeuwigheid', icon: '🔥', 
-    info: "Gefeliciteerd! Je neurale paden zijn hersteld. Je bent nu door de moeilijkste fase van de psychologische gewoontevorming heen. Je risico op vele ziektes is nu permanent verlaagd." 
-  },
-];
-
-
-
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { auth, db } from '../../firebaseConfig';
+import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs, limit, updateDoc, writeBatch } from 'firebase/firestore';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function HomeScreen() {
-  const [daysSober, setDaysSober] = useState(0);
+  const router = useRouter();
+  const [days, setDays] = useState(0);
+  const [activeMatrixTasks, setActiveMatrixTasks] = useState<any[]>([]);
+  
+  // Veranderd naar Array voor meerdere selecties
+  const [selectedTasks, setSelectedTasks] = useState<{id: string, text: string}[]>([]);
+  
+  const [mood, setMood] = useState<string | null>(null);
+  const [hasCheckedIn, setHasCheckedIn] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const loadData = async () => {
-    const storedDate = await AsyncStorage.getItem(STORAGE_KEY);
-    if (storedDate) {
-      const start = new Date(storedDate);
-      const diff = Math.floor((new Date().getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      setDaysSober(Math.max(0, diff));
+  const user = auth.currentUser;
+  const displayName = user?.email ? user.email.split('@')[0] : 'Gebruiker';
+
+  useFocusEffect(
+    useCallback(() => {
+      const initDashboard = async () => {
+        setLoading(true);
+        await fetchCounter();
+        await loadActiveMatrixTasks();
+        await checkIfAlreadyCheckedIn();
+        setLoading(false);
+      };
+      initDashboard();
+    }, [])
+  );
+
+  const fetchCounter = async () => {
+    if (!user) return;
+    try {
+      const snap = await getDoc(doc(db, "users", user.uid, "settings", "counter"));
+      if (snap.exists() && snap.data().startDate) {
+        const startDate = new Date(snap.data().startDate);
+        const today = new Date();
+        const diffDays = Math.floor(Math.abs(today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+        setDays(diffDays);
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const loadActiveMatrixTasks = async () => {
+    if (!user) return;
+    try {
+      const q = query(
+        collection(db, "users", user.uid, "todos"), 
+        where("completed", "==", false),
+        limit(10)
+      );
+      const snap = await getDocs(q);
+      const tasks = snap.docs.map(d => ({ 
+        id: d.id, 
+        displayTitle: d.data().task || d.data().text || "Naamloze taak" 
+      }));
+      setActiveMatrixTasks(tasks);
+    } catch (e) { console.error("Fout bij laden Matrix taken:", e); }
+  };
+
+  const checkIfAlreadyCheckedIn = async () => {
+    if (!user) return;
+    const todayStr = new Date().toLocaleDateString('nl-BE');
+    try {
+      const q = query(collection(db, "users", user.uid, "dailyCheckIns"), where("date", "==", todayStr), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        setHasCheckedIn(true);
+        // Voor de weergave achteraf tonen we de opgeslagen tekst
+        const data = snap.docs[0].data();
+        setSelectedTasks(data.completedTasks || []);
+      } else {
+        setHasCheckedIn(false);
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const toggleTask = (id: string, text: string) => {
+    setSelectedTasks(prev => {
+      const isSelected = prev.find(t => t.id === id);
+      if (isSelected) {
+        return prev.filter(t => t.id !== id);
+      } else {
+        return [...prev, { id, text }];
+      }
+    });
+  };
+
+  const submitCheckIn = async () => {
+    if (!user || !mood) {
+      Alert.alert("Oeps", "Kies even hoe je je voelt!");
+      return;
+    }
+
+    try {
+      // Gebruik een Batch om alle taken tegelijk te updaten
+      const batch = writeBatch(db);
+      
+      selectedTasks.forEach(task => {
+        const ref = doc(db, "users", user.uid, "todos", task.id);
+        batch.update(ref, { 
+          completed: true, 
+          completedAt: serverTimestamp() 
+        });
+      });
+
+      // Sla de check-in op
+      const checkInRef = collection(db, "users", user.uid, "dailyCheckIns");
+      await addDoc(checkInRef, {
+        mood,
+        completedTasks: selectedTasks, // Slaat de hele lijst op
+        date: new Date().toLocaleDateString('nl-BE'),
+        createdAt: serverTimestamp()
+      });
+
+      await batch.commit();
+      setHasCheckedIn(true);
+      Alert.alert("Top!", "Je check-in is opgeslagen.");
+    } catch (e) { 
+      Alert.alert("Fout", "Er ging iets mis."); 
+      console.error(e);
     }
   };
 
-  useFocusEffect(useCallback(() => { loadData(); }, []));
-
-
-  const showMilestoneInfo = (m: typeof MILESTONES[0], isAchieved: boolean) => {
-    const title = `${m.icon} ${m.label}`;
-    const message = `${isAchieved ? "BEHAALD! \n\n" : "TOEKOMSTIG DOEL: \n\n"}${m.info}`;
-
-    if (Platform.OS === 'web') {
-      // Browser versie
-      window.alert(`${title}\n\n${message}`);
-    } else {
-      // Mobiele versie (iOS/Android)
-      Alert.alert(title, message, [{ text: "Inspirerend!" }]);
-    }
-  };
+  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#007AFF" /></View>;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <View style={styles.headerSection}>
-          <Text style={styles.welcomeText}>Mijn Vooruitgang</Text>
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        
+        <View style={styles.welcomeHeader}>
+          <View>
+            <Text style={styles.welcomeText}>Welkom terug,</Text>
+            <Text style={styles.userName}>{displayName}</Text>
+          </View>
+          <Ionicons name="person-circle-outline" size={45} color="#007AFF" />
         </View>
 
-        {/* De SoberCounter krijgt nu de loadData functie mee om direct te verversen */}
-        <SoberCounter onDateChange={(days) => setDaysSober(days)} />
+        <View style={styles.counterCard}>
+          <Text style={styles.dayText}>{days}</Text>
+          <Text style={styles.counterSub}>{days === 1 ? 'Dag' : 'Dagen'} Clean</Text>
+        </View>
 
-        <View style={styles.milestoneSection}>
-          <Text style={styles.sectionTitle}>Mijlpalen (klik voor info)</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.milestoneScroll}>
-            {MILESTONES.map((m) => {
-              const isAchieved = daysSober >= m.days;
-              return (
-                <TouchableOpacity 
-                  key={m.days} 
-                  onPress={() => showMilestoneInfo(m, isAchieved)}
-                  activeOpacity={0.7}
-                  style={[styles.badgeCard, !isAchieved && styles.badgeLocked]}
-                >
-                  <Text style={[styles.badgeIcon, !isAchieved && styles.grayscale]}>{m.icon}</Text>
-                  <Text style={[styles.badgeLabel, !isAchieved && styles.lockedText]}>{m.label}</Text>
-                  <Text style={styles.badgeDays}>{m.days}d</Text>
-                  {!isAchieved && <View style={styles.lockIcon}><Text style={{fontSize: 10}}>🔒</Text></View>}
+        {!hasCheckedIn ? (
+          <View style={styles.checkInCard}>
+            <Text style={styles.checkInTitle}>Dagelijkse Check-in ☀️</Text>
+            
+            <Text style={styles.label}>Hoe voel je je op dit moment?</Text>
+            <View style={styles.moodRow}>
+              {['😔', '😐', '🙂', '😁'].map(m => (
+                <TouchableOpacity key={m} onPress={() => setMood(m)} 
+                  style={[styles.moodBtn, mood === m && styles.selectedMood]}>
+                  <Text style={{fontSize: 28}}>{m}</Text>
                 </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
+              ))}
+            </View>
 
-        <View style={styles.infoBox}>
-           <Text style={styles.infoTitle}>💡 Wist je dat?</Text>
-           <Text style={styles.infoText}>
-             Na slechts 20 minuten zonder alcohol daalt je hartslag en bloeddruk al naar een normaler niveau. Elke minuut telt.
-           </Text>
-        </View>
+            <Text style={styles.label}>Welke taken heb je vandaag volbracht?</Text>
+            <Text style={styles.subLabel}>(Geen selectie is ook oké)</Text>
+            
+            {activeMatrixTasks.length > 0 ? (
+              <View style={styles.tasksContainer}>
+                {activeMatrixTasks.map(task => {
+                  const isSelected = selectedTasks.some(t => t.id === task.id);
+                  return (
+                    <TouchableOpacity 
+                      key={task.id} 
+                      onPress={() => toggleTask(task.id, task.displayTitle)}
+                      style={[styles.taskOption, isSelected && styles.selectedTaskOption]}
+                    >
+                      <Ionicons 
+                        name={isSelected ? "checkbox" : "square-outline"} 
+                        size={22} 
+                        color={isSelected ? "#FFF" : "#007AFF"} 
+                      />
+                      <Text style={[styles.taskText, isSelected && styles.selectedTaskText]}>
+                        {task.displayTitle}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
+              <TouchableOpacity onPress={() => router.push('/log/recovery_log')} style={styles.emptyTasks}>
+                <Text style={styles.smallHint}>Geen actieve taken gevonden.</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity 
+              style={[styles.submitBtn, !mood && { opacity: 0.5 }]} 
+              onPress={submitCheckIn}
+            >
+              <Text style={styles.submitBtnText}>Check-in Voltooien</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.doneCard}>
+            <Ionicons name="checkmark-circle" size={32} color="#2ECC71" style={{marginBottom: 10}} />
+            <Text style={styles.doneText}>Geregistreerd! ✨</Text>
+            <View style={{marginTop: 10, alignItems: 'center'}}>
+              <Text style={styles.doneSub}>
+                {selectedTasks.length > 0 
+                  ? `Je hebt ${selectedTasks.length} taak/taken afgerond.` 
+                  : "Vandaag een rustdag qua Matrix-taken."}
+              </Text>
+              {selectedTasks.map((t, i) => (
+                <Text key={i} style={styles.completedTaskTag}>• {t.text || (t as any).focusGoal}</Text>
+              ))}
+            </View>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F0F4F8' },
-  container: { flex: 1 },
-  content: { padding: 20 },
-  headerSection: { marginTop: 10, marginBottom: 10 },
-  welcomeText: { fontSize: 28, fontWeight: 'bold', color: '#1A2E44' },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1A2E44', marginBottom: 15 },
-  milestoneSection: { marginTop: 10 },
-  milestoneScroll: { flexDirection: 'row', paddingBottom: 10 },
-  badgeCard: {
-    backgroundColor: '#FFF',
-    padding: 15,
-    borderRadius: 22,
-    marginRight: 12,
-    alignItems: 'center',
-    width: 105,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    borderWidth: 2,
-    borderColor: '#FFF',
-  },
-  badgeLocked: { backgroundColor: '#E5E8E8', borderColor: '#D5DBDB', elevation: 0 },
-  badgeIcon: { fontSize: 32, marginBottom: 5 },
-  grayscale: { opacity: 0.2 },
-  badgeLabel: { fontSize: 12, fontWeight: 'bold', color: '#2C3E50', textAlign: 'center' },
-  lockedText: { color: '#95A5A6' },
-  badgeDays: { fontSize: 10, color: '#7F8C8D', marginTop: 4 },
-  lockIcon: { position: 'absolute', top: 10, right: 10 },
-  infoBox: {
-    backgroundColor: '#FFF',
-    padding: 20,
-    borderRadius: 20,
-    marginTop: 25,
-    borderLeftWidth: 5,
-    borderLeftColor: '#007AFF',
-  },
-  infoTitle: { fontWeight: 'bold', color: '#007AFF', marginBottom: 5 },
-  infoText: { color: '#34495E', lineHeight: 20, fontSize: 14 },
+  container: { flex: 1, backgroundColor: '#F0F4F8' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  content: { padding: 20, paddingTop: 40, paddingBottom: 100 },
+  welcomeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  welcomeText: { fontSize: 16, color: '#7F8C8D' },
+  userName: { fontSize: 24, fontWeight: 'bold', color: '#1A2E44', textTransform: 'capitalize' },
+  counterCard: { backgroundColor: '#FFF', padding: 30, borderRadius: 30, alignItems: 'center', elevation: 4, marginBottom: 20 },
+  dayText: { fontSize: 72, fontWeight: '900', color: '#007AFF' },
+  counterSub: { fontSize: 18, color: '#7F8C8D', fontWeight: 'bold', textTransform: 'uppercase' },
+  checkInCard: { backgroundColor: '#FFF', padding: 25, borderRadius: 30, elevation: 3 },
+  checkInTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20, color: '#1A2E44' },
+  label: { fontSize: 15, color: '#34495E', marginBottom: 4, fontWeight: '600' },
+  subLabel: { fontSize: 12, color: '#94A3B8', marginBottom: 15 },
+  moodRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
+  moodBtn: { padding: 12, borderRadius: 20, backgroundColor: '#F8F9FA', borderWidth: 2, borderColor: 'transparent' },
+  selectedMood: { borderColor: '#007AFF', backgroundColor: '#E3F2FD' },
+  tasksContainer: { marginBottom: 20 },
+  taskOption: { flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 15, backgroundColor: '#F8F9FA', marginBottom: 8, borderWidth: 1, borderColor: '#E0E0E0' },
+  selectedTaskOption: { backgroundColor: '#007AFF', borderColor: '#007AFF' },
+  taskText: { marginLeft: 10, color: '#34495E', fontSize: 14, flex: 1 },
+  selectedTaskText: { color: '#FFF', fontWeight: '500' },
+  submitBtn: { backgroundColor: '#2ECC71', padding: 18, borderRadius: 20, alignItems: 'center', marginTop: 10 },
+  submitBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  emptyTasks: { padding: 20, borderStyle: 'dashed', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 15, marginBottom: 20 },
+  smallHint: { fontSize: 13, color: '#94A3B8', textAlign: 'center' },
+  doneCard: { backgroundColor: '#E8F6F3', padding: 25, borderRadius: 25, alignItems: 'center', borderWidth: 1, borderColor: '#2ECC71' },
+  doneText: { color: '#16A085', fontWeight: 'bold', fontSize: 16 },
+  doneSub: { color: '#16A085', fontSize: 14, textAlign: 'center' },
+  completedTaskTag: { color: '#16A085', fontSize: 12, fontStyle: 'italic', marginTop: 2 }
 });

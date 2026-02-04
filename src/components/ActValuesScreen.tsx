@@ -1,17 +1,9 @@
-// src/components/ActValuesScreen.tsx
-
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, Platform, SafeAreaView } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { db, auth } from '../../firebaseConfig';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
-// We gebruiken een nieuwe key om conflicten met oude, kapotte data te voorkomen
-const VALUES_STORAGE_KEY = 'ACT_VALUES_FINAL_VERSION';
-
-interface ValueItem {
-  id: string;
-  title: string;
-  description: string;
-}
+interface ValueItem { id: string; title: string; description: string; }
 
 const ActValuesScreen: React.FC = () => {
   const [values, setValues] = useState<ValueItem[]>([]);
@@ -19,143 +11,56 @@ const ActValuesScreen: React.FC = () => {
   const [newDesc, setNewDesc] = useState('');
   const [isAdding, setIsAdding] = useState(false);
 
-  // Laad de waarden zodra het scherm start
-  useEffect(() => {
-    loadValues();
-  }, []);
+  useEffect(() => { loadValues(); }, []);
 
   const loadValues = async () => {
-    try {
-      const stored = await AsyncStorage.getItem(VALUES_STORAGE_KEY);
-      if (stored !== null) {
-        setValues(JSON.parse(stored));
-        console.log("Data geladen:", JSON.parse(stored));
-      }
-    } catch (e) {
-      console.error("Fout bij laden:", e);
-    }
+    const user = auth.currentUser;
+    if (!user) return;
+    const docRef = doc(db, "users", user.uid, "settings", "actValues");
+    const snap = await getDoc(docRef);
+    if (snap.exists()) setValues(snap.data().items || []);
+  };
+
+  const syncValues = async (newList: ValueItem[]) => {
+    const user = auth.currentUser;
+    if (!user) return;
+    await setDoc(doc(db, "users", user.uid, "settings", "actValues"), { items: newList });
   };
 
   const addValue = async () => {
-    // Check of er iets is ingevuld
-    if (newTitle.trim() === '') {
-      Alert.alert("Oeps", "Vul minimaal een titel in.");
-      return;
-    }
-
-    const newItem: ValueItem = {
-      id: Date.now().toString(),
-      title: newTitle.trim(),
-      description: newDesc.trim(),
-    };
-
-    try {
-      // 1. Maak de nieuwe lijst
-      const updatedValues = [...values, newItem];
-      
-      // 2. Update de UI (State)
-      setValues(updatedValues);
-      
-      // 3. Sla op in AsyncStorage
-      await AsyncStorage.setItem(VALUES_STORAGE_KEY, JSON.stringify(updatedValues));
-      
-      console.log("Nieuwe waarde toegevoegd:", newItem);
-
-      // 4. Reset het formulier
-      setNewTitle('');
-      setNewDesc('');
-      setIsAdding(false);
-    } catch (e) {
-      console.error("Opslaan mislukt:", e);
-      Alert.alert("Fout", "Kon de waarde niet opslaan.");
-    }
+    if (!newTitle.trim()) return;
+    const newList = [...values, { id: Date.now().toString(), title: newTitle, description: newDesc }];
+    setValues(newList);
+    await syncValues(newList);
+    setNewTitle(''); setNewDesc(''); setIsAdding(false);
   };
 
   const deleteValue = async (id: string) => {
-    const performDelete = async () => {
-      try {
-        const updatedValues = values.filter(v => v.id !== id);
-        setValues(updatedValues);
-        await AsyncStorage.setItem(VALUES_STORAGE_KEY, JSON.stringify(updatedValues));
-      } catch (e) {
-        console.error("Verwijderen mislukt:", e);
-      }
-    };
-
-    if (Platform.OS === 'web') {
-      if (window.confirm("Deze waarde verwijderen?")) {
-        await performDelete();
-      }
-    } else {
-      Alert.alert("Verwijderen", "Weet je het zeker?", [
-        { text: "Annuleer", style: "cancel" },
-        { text: "Verwijder", style: "destructive", onPress: performDelete }
-      ]);
-    }
+    const newList = values.filter(v => v.id !== id);
+    setValues(newList);
+    await syncValues(newList);
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.headerSection}>
-          <Text style={styles.header}>Mijn Kompas 🧭</Text>
-          <Text style={styles.subHeader}>Wat geeft jouw leven betekenis?</Text>
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.header}>Mijn Kompas 🧭</Text>
+      {values.map((item) => (
+        <View key={item.id} style={styles.valueCard}>
+          <TouchableOpacity onPress={() => deleteValue(item.id)} style={styles.deleteBadge}><Text style={{color:'#fff'}}>✕</Text></TouchableOpacity>
+          <Text style={styles.valueTitle}>{item.title}</Text>
+          <Text>{item.description}</Text>
         </View>
-
-        {/* LIJST MET KAARTEN */}
-        <View style={styles.valuesGrid}>
-          {values.length === 0 && !isAdding && (
-            <Text style={styles.emptyText}>Nog geen waarden toegevoegd. Begin met je eerste!</Text>
-          )}
-          
-          {values.map((item) => (
-            <View key={item.id} style={styles.valueCard}>
-              <TouchableOpacity 
-                style={styles.deleteBadge} 
-                onPress={() => deleteValue(item.id)}
-              >
-                <Text style={styles.deleteIcon}>✕</Text>
-              </TouchableOpacity>
-              <Text style={styles.valueTitle}>{item.title}</Text>
-              <Text style={styles.valueDesc}>{item.description}</Text>
-            </View>
-          ))}
+      ))}
+      {isAdding ? (
+        <View style={styles.addCard}>
+          <TextInput placeholder="Titel" value={newTitle} onChangeText={setNewTitle} style={styles.inputTitle} />
+          <TextInput placeholder="Omschrijving" value={newDesc} onChangeText={setNewDesc} multiline style={styles.inputDesc} />
+          <TouchableOpacity onPress={addValue} style={[styles.btn, styles.saveBtn]}><Text style={{color:'#fff'}}>Opslaan</Text></TouchableOpacity>
         </View>
-
-        {/* FORMULIER */}
-        {isAdding ? (
-          <View style={styles.addCard}>
-            <Text style={styles.inputLabel}>Titel van je waarde</Text>
-            <TextInput
-              style={styles.inputTitle}
-              placeholder="bv. Familie of Gezondheid"
-              value={newTitle}
-              onChangeText={setNewTitle}
-            />
-            <Text style={styles.inputLabel}>Omschrijving</Text>
-            <TextInput
-              style={styles.inputDesc}
-              placeholder="Waarom is dit belangrijk?"
-              value={newDesc}
-              onChangeText={setNewDesc}
-              multiline
-            />
-            <View style={styles.buttonRow}>
-              <TouchableOpacity style={[styles.btn, styles.saveBtn]} onPress={addValue}>
-                <Text style={styles.btnText}>Opslaan</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.btn, styles.cancelBtn]} onPress={() => setIsAdding(false)}>
-                <Text style={styles.btnText}>Annuleer</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          <TouchableOpacity style={styles.addButton} onPress={() => setIsAdding(true)}>
-            <Text style={styles.addButtonText}>+ Voeg waarde toe</Text>
-          </TouchableOpacity>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+      ) : (
+        <TouchableOpacity style={styles.addButton} onPress={() => setIsAdding(true)}><Text>+ Voeg waarde toe</Text></TouchableOpacity>
+      )}
+    </ScrollView>
   );
 };
 

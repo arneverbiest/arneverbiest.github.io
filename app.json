@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Herstel App",
-    "slug": "my-app",
+    "slug": "herstel-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.jouwnaam.herstelapp"
+      "bundleIdentifier": "com.arneverbiest.herstelapp"
     },
     "android": {
       "adaptiveIcon": {
@@ -20,17 +20,21 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false,
       "package": "com.arneverbiest.herstelapp"
     },
     "web": {
       "bundler": "metro",
       "output": "static",
       "favicon": "./assets/images/favicon.png",
-      "baseUrl": "/herstel-app"
+      "baseUrl": ""
     },
     "plugins": [
-      "expo-router",
+      [
+        "expo-router",
+        {
+          "origin": "https://arneverbiest.github.io/"
+        }
+      ],
       [
         "expo-splash-screen",
         {

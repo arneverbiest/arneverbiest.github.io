@@ -1,141 +1,212 @@
-// src/components/FiveGSchema.tsx
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, SafeAreaView, ActivityIndicator } from 'react-native';
+import { db, auth } from '../../firebaseConfig';
+import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// Alle beschikbare coping opties (gebaseerd op je Relax-sectie)
+const ALL_COPING_OPTIONS = [
+  '🌬️ Ademhaling', '🌬️ Sober', '🌬️ Gevoelsurfen', 
+  '🌬️ Veilige Haven', '🌬️ 5-4-3-2-1', '🚶 Wandelen', 
+  '💤 Bodyscan', '💎 Rots & Water', '🌸 Zintuigentuin'
+];
 
-const LOG_ENTRIES_KEY = 'RecoveryLogEntries';
+// Help Modal Component
+const HelpModal = ({ visible, title, text, onClose }: any) => (
+  <Modal visible={visible} transparent animationType="fade">
+    <View style={styles.modalOverlay}>
+      <View style={styles.modalContent}>
+        <Text style={styles.modalTitle}>{title}</Text>
+        <Text style={styles.modalText}>{text}</Text>
+        <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+          <Text style={{color: '#fff', fontWeight: 'bold'}}>Ik snap het</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </Modal>
+);
 
-interface LogEntry {
-  id: string;
-  date: string;
-  title: string;
-  content: string;
-  alcoholCraving: number;
-}
-
-interface GFieldProps {
-    title: string;
-    value: string;
-    setValue: (text: string) => void;
-}
-
-// HELP COMPONENT BUITEN DE FUNCTIE
-const GField: React.FC<GFieldProps> = ({ title, value, setValue }) => (
+// Herbruikbaar G-veld component
+const GField = ({ title, value, setValue, placeholder, helpText }: any) => {
+  const [showHelp, setShowHelp] = useState(false);
+  return (
     <View style={styles.fieldContainer}>
-      <Text style={styles.title}>{title}</Text>
+      <View style={styles.labelRow}>
+        <Text style={styles.fieldTitle}>{title}</Text>
+        <TouchableOpacity onPress={() => setShowHelp(true)} style={styles.helpIcon}>
+          <Text style={styles.helpIconText}>?</Text>
+        </TouchableOpacity>
+      </View>
       <TextInput
         style={styles.input}
         multiline
-        numberOfLines={3}
         value={value}
         onChangeText={setValue}
-        placeholder={`Beschrijf de ${title.toLowerCase()}...`}
+        placeholder={placeholder}
+        placeholderTextColor="#95A5A6"
       />
-    </View>
-);
-
-const FiveGSchema: React.FC = () => {
-  const [gebeurtenis, setGebeurtenis] = useState('');
-  const [gedachten, setGedachten] = useState('');
-  const [gevoelens, setGevoelens] = useState('');
-  const [gedrag, setGedrag] = useState('');
-  const [gevolg, setGevolg] = useState('');
-  const [craving, setCraving] = useState('');
-  const [showToast, setShowToast] = useState(false);
-
-  const resetForm = () => {
-    setGebeurtenis(''); setGedachten(''); setGevoelens(''); setGedrag(''); setGevolg(''); setCraving('');
-  }
-
-  const handleSave = async () => {
-    // 1. Check op lege velden
-    if (!gebeurtenis || !gedachten || !gevoelens || !gedrag || !gevolg || !craving) {
-        Alert.alert('Invoerfout', 'Vul a.u.b. alle velden in.');
-        return;
-    }
-
-    // 2. Validatie: Is craving een getal?
-    const cravingValue = parseInt(craving, 10);
-    if (isNaN(cravingValue)) {
-        Alert.alert('Foutieve Invoer', 'Bij verlangen mag je enkel cijfers invullen.');
-        return;
-    }
-
-    if (cravingValue < 0 || cravingValue > 10) {
-        Alert.alert('Foutieve Invoer', 'Het verlangen moet tussen 0 en 10 liggen.');
-        return;
-    }
-    
-    const combinedContent = `--- 5G Reflectie ---\n1. Gebeurtenis: ${gebeurtenis}\n2. Gedachten: ${gedachten}\n3. Gevoelens: ${gevoelens}\n4. Gedrag: ${gedrag}\n5. Gevolg: ${gevolg}`;
-
-    const newLogEntry: LogEntry = {
-        id: Date.now().toString(),
-        date: new Date().toLocaleDateString('nl-BE'),
-        title: `5G: ${gebeurtenis.substring(0, 20)}...`,
-        content: combinedContent,
-        alcoholCraving: cravingValue,
-    };
-
-    try {
-      const storedEntries = await AsyncStorage.getItem(LOG_ENTRIES_KEY);
-      const entries = storedEntries ? JSON.parse(storedEntries) : [];
-      await AsyncStorage.setItem(LOG_ENTRIES_KEY, JSON.stringify([...entries, newLogEntry]));
-      
-      setShowToast(true);
-      resetForm();
-      setTimeout(() => setShowToast(false), 3000);
-    } catch (error) {
-      Alert.alert('Fout', 'Kon de gegevens niet opslaan.');
-    }
-  };
-
-  return (
-    <View style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.header}>Analyseer met het 5G-Schema</Text>
-        
-        {showToast && (
-          <View style={styles.toast}>
-            <Text style={styles.toastText}>✅ 5G succesvol toegevoegd aan logboek!</Text>
-          </View>
-        )}
-
-        <GField title="1. Gebeurtenis" value={gebeurtenis} setValue={setGebeurtenis} />
-        <GField title="2. Gedachten" value={gedachten} setValue={setGedachten} />
-        <GField title="3. Gevoelens" value={gevoelens} setValue={setGevoelens} />
-        <GField title="4. Gedrag" value={gedrag} setValue={setGedrag} />
-        <GField title="5. Gevolg" value={gevolg} setValue={setGevolg} />
-
-        <View style={styles.fieldContainer}>
-            <Text style={styles.title}>6. Verlangen (Cijfer 0-10)</Text>
-            <TextInput
-                style={styles.input}
-                value={craving}
-                onChangeText={setCraving}
-                placeholder="Vul een getal in..."
-                keyboardType="numeric"
-            />
-        </View>
-
-        <TouchableOpacity style={styles.button} onPress={handleSave}>
-          <Text style={styles.buttonText}>Opslaan in Logboek</Text>
-        </TouchableOpacity>
-      </ScrollView>
+      <HelpModal visible={showHelp} title={title} text={helpText} onClose={() => setShowHelp(false)} />
     </View>
   );
 };
 
-const styles = StyleSheet.create({
-  scrollContent: { padding: 20, paddingBottom: 40 },
-  header: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  fieldContainer: { marginBottom: 15, borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 8, backgroundColor: '#fff' },
-  title: { fontSize: 16, fontWeight: '600', marginBottom: 5, color: '#007AFF' },
-  input: { fontSize: 14, minHeight: 40, textAlignVertical: 'top' },
-  button: { backgroundColor: '#007AFF', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10 },
-  buttonText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-  toast: { backgroundColor: '#4CAF50', padding: 10, borderRadius: 8, marginBottom: 15, alignItems: 'center' },
-  toastText: { color: 'white', fontWeight: 'bold' }
-});
+export default function FiveGSchema() {
+  const [g, setG] = useState({ 
+    gebeurtenis: '', gedachte: '', gevoel: '', 
+    gedrag: '', gevolg: '', helpend: '' 
+  });
+  const [selectedCoping, setSelectedCoping] = useState<string[]>([]);
+  const [craving, setCraving] = useState('');
+  const [noodplanSteps, setNoodplanSteps] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
 
-export default FiveGSchema;
+  // Haal het noodplan op als herinnering
+  useEffect(() => {
+    const fetchNoodplan = async () => {
+      const user = auth.currentUser;
+      if (user) {
+        try {
+          const snap = await getDoc(doc(db, "users", user.uid, "settings", "actionPlan"));
+          if (snap.exists()) setNoodplanSteps(snap.data().copingOrder || []);
+        } catch (e) { console.error(e); }
+      }
+      setLoading(false);
+    };
+    fetchNoodplan();
+  }, []);
+
+  const toggleCoping = (option: string) => {
+    setSelectedCoping(prev => 
+      prev.includes(option) ? prev.filter(i => i !== option) : [...prev, option]
+    );
+  };
+
+  const handleSave = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+    
+    const cravingNum = parseInt(craving);
+    if (!g.gebeurtenis || !g.gedachte) {
+      Alert.alert("Incompleet", "Vul tenminste de gebeurtenis en de gedachte in.");
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, "users", user.uid, "logbookEntries"), {
+        ...g,
+        selectedCoping,
+        alcoholCraving: cravingNum || 0,
+        date: new Date().toLocaleDateString('nl-BE'),
+        createdAt: serverTimestamp(),
+        type: '5G_Deep'
+      });
+      
+      Alert.alert("Opgeslagen", "Je analyse en actieplan staan in je logboek.");
+      setG({ gebeurtenis: '', gedachte: '', gevoel: '', gedrag: '', gevolg: '', helpend: '' });
+      setCraving('');
+      setSelectedCoping([]);
+    } catch (e) {
+      Alert.alert("Fout", "Opslaan mislukt.");
+    }
+  };
+
+  if (loading) return <ActivityIndicator size="large" color="#007AFF" style={{flex:1}} />;
+
+  return (
+    <SafeAreaView style={{flex: 1, backgroundColor: '#F0F4F8'}}>
+      <ScrollView style={styles.container} contentContainerStyle={{paddingBottom: 60}}>
+        <Text style={styles.header}>Diepe 5G Analyse</Text>
+        
+        <GField title="1. Gebeurtenis" value={g.gebeurtenis} setValue={(v:string) => setG({...g, gebeurtenis: v})} placeholder="Wie, wat, waar, wanneer?" helpText="Beschrijf objectief wat er gebeurde." />
+        <GField title="2. Gedachten" value={g.gedachte} setValue={(v:string) => setG({...g, gedachte: v})} placeholder="Wat dacht je?" helpText="Welke automatische gedachte kwam op?" />
+        <GField title="3. Gevoelens" value={g.gevoel} setValue={(v:string) => setG({...g, gevoel: v})} placeholder="Wat voelde je?" helpText="Benoem emoties en lichamelijke sensaties." />
+        <GField title="4. Gedrag" value={g.gedrag} setValue={(v:string) => setG({...g, gedrag: v})} placeholder="Wat heb je gedaan?" helpText="Beschrijf je actie op dat moment." />
+        <GField title="5. Gevolg" value={g.gevolg} setValue={(v:string) => setG({...g, gevolg: v})} placeholder="Wat was het resultaat?" helpText="Resultaat op korte en lange termijn." />
+
+        <View style={styles.specialField}>
+          <Text style={styles.specialTitle}>✨ De Helpende Gedachte</Text>
+          <TextInput style={styles.input} placeholder="Welke nieuwe gedachte zou je helpen?" value={g.helpend} onChangeText={(v) => setG({...g, helpend: v})} multiline />
+        </View>
+
+        {/* NIEUWE COPING SECTIE */}
+        <View style={styles.copingSection}>
+          <Text style={styles.fieldTitle}>6. Coping & Actie</Text>
+          <Text style={styles.hintTextSmall}>Welke technieken ga je nu inzetten?</Text>
+          
+          <View style={styles.chipContainer}>
+            {ALL_COPING_OPTIONS.map((option) => (
+              <TouchableOpacity 
+                key={option} 
+                onPress={() => toggleCoping(option)}
+                style={[styles.chip, selectedCoping.includes(option) && styles.chipActive]}
+              >
+                <Text style={[styles.chipText, selectedCoping.includes(option) && styles.chipTextActive]}>{option}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {noodplanSteps.length > 0 && (
+            <View style={styles.noodplanReminder}>
+              <Text style={styles.reminderTitle}>💡 Herinnering uit je noodplan:</Text>
+              {noodplanSteps.map((step, i) => (
+                <Text key={i} style={styles.reminderText}>• {step}</Text>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.cravingSection}>
+          <Text style={styles.cravingLabel}>Hoe sterk was de trek? (0-10)</Text>
+          <View style={styles.inputWrapper}>
+            <TextInput style={styles.cravingInput} value={craving} onChangeText={setCraving} keyboardType="numeric" maxLength={2} placeholder="-" />
+          </View>
+        </View>
+
+        <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
+          <Text style={styles.saveBtnText}>Analyse Opslaan</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 20 },
+  header: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, marginTop: 20, color: '#1A2E44' },
+  fieldContainer: { backgroundColor: '#FFF', padding: 15, borderRadius: 15, marginBottom: 15, elevation: 1 },
+  labelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
+  fieldTitle: { fontSize: 16, fontWeight: 'bold', color: '#007AFF' },
+  helpIcon: { backgroundColor: '#E3F2FD', width: 26, height: 26, borderRadius: 13, justifyContent: 'center', alignItems: 'center' },
+  helpIconText: { color: '#007AFF', fontWeight: 'bold' },
+  input: { fontSize: 15, color: '#2C3E50', textAlignVertical: 'top', minHeight: 50 },
+  
+  specialField: { backgroundColor: '#E8F6F3', padding: 15, borderRadius: 15, marginBottom: 15, borderWidth: 1, borderColor: '#1ABC9C' },
+  specialTitle: { fontSize: 16, fontWeight: 'bold', color: '#16A085', marginBottom: 5 },
+  hintTextSmall: { fontSize: 12, color: '#7F8C8D', marginBottom: 10, fontStyle: 'italic' },
+
+  // Coping Styles
+  copingSection: { backgroundColor: '#FFF', padding: 15, borderRadius: 15, marginBottom: 15, elevation: 1 },
+  chipContainer: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 5 },
+  chip: { borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 15, marginRight: 8, marginBottom: 8 },
+  chipActive: { backgroundColor: '#007AFF', borderColor: '#007AFF' },
+  chipText: { color: '#475569', fontSize: 13 },
+  chipTextActive: { color: '#FFF', fontWeight: 'bold' },
+  
+  noodplanReminder: { marginTop: 15, padding: 10, backgroundColor: '#F8FAFC', borderRadius: 10, borderLeftWidth: 3, borderLeftColor: '#007AFF' },
+  reminderTitle: { fontSize: 12, fontWeight: 'bold', color: '#007AFF', marginBottom: 4 },
+  reminderText: { fontSize: 12, color: '#64748B' },
+
+  cravingSection: { backgroundColor: '#FFF', padding: 20, borderRadius: 15, marginBottom: 25, elevation: 1, alignItems: 'center' },
+  cravingLabel: { fontSize: 15, fontWeight: '600', color: '#34495E', marginBottom: 5 },
+  inputWrapper: { borderBottomWidth: 3, borderBottomColor: '#007AFF', width: 60 },
+  cravingInput: { textAlign: 'center', fontSize: 24, fontWeight: 'bold', color: '#007AFF' },
+
+  saveBtn: { backgroundColor: '#007AFF', padding: 18, borderRadius: 15, alignItems: 'center', elevation: 3 },
+  saveBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 18 },
+  
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 40 },
+  modalContent: { backgroundColor: '#FFF', padding: 25, borderRadius: 20, alignItems: 'center', width: '100%' },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15, color: '#007AFF' },
+  modalText: { textAlign: 'center', lineHeight: 24, marginBottom: 20, color: '#555', fontSize: 16 },
+  closeBtn: { backgroundColor: '#007AFF', paddingHorizontal: 40, paddingVertical: 12, borderRadius: 10 }
+});

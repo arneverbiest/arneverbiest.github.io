@@ -1,239 +1,199 @@
-// src/components/LogbookScreen.tsx
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { db, auth } from '../../firebaseConfig';
+import { collection, query, orderBy, getDocs } from 'firebase/firestore';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, SafeAreaView, Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from 'expo-router';
+export default function LogbookScreen() {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const router = useRouter();
 
-const LOG_ENTRIES_KEY = 'RecoveryLogEntries';
-
-interface LogEntry {
-  id: string;
-  date: string;
-  title: string;
-  content: string;
-  alcoholCraving: number;
-}
-
-const LogbookScreen: React.FC = () => {
-  const [entries, setEntries] = useState<LogEntry[]>([]);
-
-  // Vernieuw de lijst telkens als de tab geopend wordt
   useFocusEffect(
-    React.useCallback(() => {
-      loadEntries();
+    useCallback(() => {
+      const fetchLogs = async () => {
+        const user = auth.currentUser;
+        if (!user) return;
+        setLoading(true);
+        try {
+          const q = query(collection(db, "users", user.uid, "logbookEntries"), orderBy("createdAt", "desc"));
+          const snap = await getDocs(q);
+          setLogs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchLogs();
     }, [])
   );
 
-  const loadEntries = async () => {
-    try {
-      const storedEntries = await AsyncStorage.getItem(LOG_ENTRIES_KEY);
-      if (storedEntries) {
-        const parsed = JSON.parse(storedEntries);
-        // Sorteren: nieuwste (hoogste ID/timestamp) bovenaan
-        const sorted = parsed.sort((a: LogEntry, b: LogEntry) => b.id.localeCompare(a.id));
-        setEntries(sorted);
-      }
-    } catch (error) {
-      console.error("Fout bij laden logboek:", error);
-    }
+  const toggleExpand = (id: string) => {
+    setExpandedId(expandedId === id ? null : id);
   };
 
-  const deleteEntry = async (id: string) => {
-    console.log("Delete functie gestart voor ID:", id);
-
-    const performDelete = async () => {
-      try {
-        const updatedEntries = entries.filter(entry => entry.id !== id);
-        await AsyncStorage.setItem(LOG_ENTRIES_KEY, JSON.stringify(updatedEntries));
-        setEntries(updatedEntries);
-        console.log("Item verwijderd uit opslag.");
-      } catch (error) {
-        console.error("Fout bij verwijderen:", error);
-        Alert.alert("Fout", "Kon de notitie niet verwijderen.");
-      }
-    };
-
-    // --- BROWSER / WEB COMPATIBILITEIT ---
-    if (Platform.OS === 'web') {
-      if (window.confirm("Weet je zeker dat je deze notitie wilt verwijderen?")) {
-        await performDelete();
-      }
-    } else {
-      // --- MOBIEL (iOS/Android) ---
-      Alert.alert(
-        "Verwijderen",
-        "Weet je zeker dat je deze notitie wilt verwijderen?",
-        [
-          { text: "Annuleren", style: "cancel" },
-          { text: "Verwijder", style: "destructive", onPress: performDelete }
-        ]
-      );
-    }
-  };
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.headerContainer}>
-        <Text style={styles.headerTitle}>Mijn Logboek</Text>
-        <Text style={styles.headerSubtitle}>{entries.length} opgeslagen momenten</Text>
-      </View>
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+      <Text style={styles.header}>Mijn Logboek 📖</Text>
+      
+      {logs.length === 0 ? (
+        <Text style={styles.emptyText}>Nog geen logs gevonden. Begin met een 5G-analyse!</Text>
+      ) : (
+        logs.map((log) => {
+          const isIncomplete = log.type === '5G_Quick';
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {entries.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Je logboek is nog leeg.</Text>
-            <Text style={styles.emptySubText}>
-              Gebruik het 5G-schema om je eerste reflectie op te slaan of leg een moment vast.
-            </Text>
-          </View>
-        ) : (
-          entries.map((item) => (
-            <View key={item.id} style={styles.card}>
-              <View style={styles.cardHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardDate}>{item.date}</Text>
-                  <Text style={styles.cardTitle}>{item.title}</Text>
+          return (
+            <TouchableOpacity 
+              key={log.id} 
+              style={[styles.logCard, isIncomplete && styles.incompleteCard]} 
+              onPress={() => toggleExpand(log.id)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.logHeader}>
+                <View>
+                  <Text style={styles.logDate}>{log.date || "Datum onbekend"}</Text>
+                  <Text style={[styles.logType, isIncomplete && { color: '#E67E22' }]}>
+                    {isIncomplete ? '📝 Snelle Log (Incompleet)' : '🧠 Volledige Analyse'}
+                  </Text>
                 </View>
-                
-                {/* VERWIJDER KNOP */}
-                <TouchableOpacity 
-                  onPress={() => {
-                    console.log("Prullenbak ingedrukt voor:", item.id);
-                    deleteEntry(item.id);
-                  }}
-                  style={styles.deleteButton}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.deleteIcon}>🗑️</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.divider} />
-              
-              <Text style={styles.cardContent}>{item.content}</Text>
-              
-              <View style={styles.footerRow}>
-                <View style={styles.cravingBadge}>
-                  <Text style={styles.cravingText}>
-                    Trek: {item.alcoholCraving}/10
+                <View style={[styles.cravingBadge, { backgroundColor: log.alcoholCraving > 6 ? '#FADBD8' : '#D6EAF8' }]}>
+                  <Text style={{ color: log.alcoholCraving > 6 ? '#E74C3C' : '#3498DB', fontWeight: 'bold' }}>
+                    Trek: {log.alcoholCraving}/10
                   </Text>
                 </View>
               </View>
-            </View>
-          ))
-        )}
-      </ScrollView>
-    </SafeAreaView>
+
+              <Text style={styles.previewText} numberOfLines={expandedId === log.id ? undefined : 2}>
+                <Text style={{ fontWeight: 'bold' }}>Situatie: </Text>{log.gebeurtenis}
+              </Text>
+
+              {expandedId === log.id && (
+                <View style={styles.expandedContent}>
+                  <View style={styles.divider} />
+                  
+                  {/* GEDACHTE */}
+                  {!isIncomplete && (
+                    <View style={styles.gRow}>
+                      <Text style={styles.gLabel}>Gedachte:</Text>
+                      <Text style={styles.gText}>{log.gedachte || "Niet ingevuld"}</Text>
+                    </View>
+                  )}
+
+                  {/* GEVOEL */}
+                  <View style={styles.gRow}>
+                    <Text style={styles.gLabel}>Gevoel:</Text>
+                    <Text style={styles.gText}>{log.gevoel}</Text>
+                  </View>
+
+                  {/* COPING SECTIE (Wat heeft geholpen) */}
+                  {log.gebruikteCoping && log.gebruikteCoping.length > 0 && (
+                    <View style={styles.copingBox}>
+                      <Text style={styles.copingTitle}>🛠 Wat heeft geholpen:</Text>
+                      <View style={styles.chipWrapper}>
+                        {log.gebruikteCoping.map((item: string, index: number) => (
+                          <View key={index} style={styles.actionChip}>
+                            <Text style={styles.actionChipText}>{item}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* GEDRAG & GEVOLG (Alleen bij volledige analyse) */}
+                  {!isIncomplete && (
+                    <>
+                      <View style={styles.gRow}>
+                        <Text style={styles.gLabel}>Gedrag:</Text>
+                        <Text style={styles.gText}>{log.gedrag || "Niet ingevuld"}</Text>
+                      </View>
+                      <View style={styles.gRow}>
+                        <Text style={styles.gLabel}>Gevolg:</Text>
+                        <Text style={styles.gText}>{log.gevolg || "Niet ingevuld"}</Text>
+                      </View>
+                    </>
+                  )}
+
+                  {/* HELPENDE GEDACHTE */}
+                  {log.helpend && (
+                    <View style={styles.helpendBox}>
+                      <Text style={styles.helpendLabel}>✨ Helpende Gedachte:</Text>
+                      <Text style={styles.helpendText}>{log.helpend}</Text>
+                    </View>
+                  )}
+
+                  {/* AANVUL KNOP VOOR QUICK LOGS */}
+                  {isIncomplete && (
+                    <TouchableOpacity 
+                      style={styles.completeBtn}
+                      onPress={() => router.push({
+                        pathname: '/log/five-g-edit', 
+                        params: { 
+                          editId: log.id, 
+                          prefilledEvent: log.gebeurtenis, 
+                          prefilledFeeling: log.gevoel 
+                        }
+                      })}
+                    >
+                      <Ionicons name="flash" size={18} color="white" />
+                      <Text style={styles.completeBtnText}>Analyse nu voltooien</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+              
+              <Text style={styles.tapHint}>
+                {expandedId === log.id ? "Tik om in te klappen" : "Tik om details te zien"}
+              </Text>
+            </TouchableOpacity>
+          );
+        })
+      )}
+    </ScrollView>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#F0F4F8',
-  },
-  headerContainer: {
-    padding: 20,
-    backgroundColor: '#FFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E1E8ED',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1A2E44',
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#7F8C8D',
-    marginTop: 4,
-  },
-  scrollContent: {
-    padding: 15,
-    paddingBottom: 30,
-  },
-  card: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  cardDate: {
-    fontSize: 12,
-    color: '#007AFF',
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1A2E44',
-    paddingRight: 10,
-  },
-  deleteButton: {
-    backgroundColor: '#F9EBEB',
-    padding: 10,
-    borderRadius: 12,
-  },
-  deleteIcon: {
-    fontSize: 16,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#F0F4F8',
-    marginVertical: 12,
-  },
-  cardContent: {
-    fontSize: 15,
-    color: '#34495E',
-    lineHeight: 22,
-  },
-  footerRow: {
-    flexDirection: 'row',
-    marginTop: 15,
-    alignItems: 'center',
-  },
-  cravingBadge: {
-    backgroundColor: '#EBF5FB',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  cravingText: {
-    fontSize: 13,
-    color: '#2E86C1',
-    fontWeight: '700',
-  },
-  emptyState: {
-    marginTop: 60,
-    alignItems: 'center',
-    paddingHorizontal: 40,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1A2E44',
-    marginBottom: 8,
-  },
-  emptySubText: {
-    textAlign: 'center',
-    color: '#95A5A6',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-});
+  container: { flex: 1, backgroundColor: '#F0F4F8', padding: 20 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, marginTop: 40, color: '#1A2E44' },
+  emptyText: { textAlign: 'center', color: '#7F8C8D', marginTop: 50, fontStyle: 'italic' },
+  logCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 20, marginBottom: 15, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
+  incompleteCard: { borderLeftWidth: 5, borderLeftColor: '#E67E22' },
+  logHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
+  logDate: { fontSize: 14, fontWeight: 'bold', color: '#2C3E50' },
+  logType: { fontSize: 12, color: '#7F8C8D', marginTop: 2 },
+  cravingBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
+  previewText: { fontSize: 14, color: '#34495E', lineHeight: 20 },
+  expandedContent: { marginTop: 10 },
+  divider: { height: 1, backgroundColor: '#F0F0F0', marginVertical: 10 },
+  gRow: { marginBottom: 10 },
+  gLabel: { fontSize: 12, fontWeight: 'bold', color: '#007AFF', marginBottom: 2 },
+  gText: { fontSize: 14, color: '#2C3E50' },
+  
+  // Coping Styles
+  copingBox: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: '#E2E8F0' },
+  copingTitle: { fontSize: 11, fontWeight: 'bold', color: '#64748B', marginBottom: 8, textTransform: 'uppercase' },
+  chipWrapper: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  actionChip: { backgroundColor: '#3498DB', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  actionChipText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
 
-export default LogbookScreen;
+  helpendBox: { backgroundColor: '#E8F6F3', padding: 12, borderRadius: 12, marginTop: 10, borderWidth: 1, borderColor: '#1ABC9C' },
+  helpendLabel: { fontSize: 12, fontWeight: 'bold', color: '#16A085', marginBottom: 4 },
+  helpendText: { fontSize: 14, color: '#16A085', fontStyle: 'italic' },
+  
+  completeBtn: { backgroundColor: '#E67E22', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 12, marginTop: 15, gap: 8 },
+  completeBtnText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
+  
+  tapHint: { fontSize: 10, color: '#BDC3C7', textAlign: 'center', marginTop: 15 }
+});

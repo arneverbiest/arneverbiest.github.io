@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Dimensions } fro
 import { db, auth } from '../../firebaseConfig';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { useFocusEffect } from 'expo-router';
+import { NavHeader } from './NavHeader';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -31,6 +32,7 @@ const StatsScreen: React.FC = () => {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{paddingBottom: 40}}>
+      <NavHeader  title="Statistieken 📊" />
       <Text style={styles.header}>Statistieken 📊</Text>
       
       <View style={styles.card}>

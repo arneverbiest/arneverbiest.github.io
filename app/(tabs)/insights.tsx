@@ -12,6 +12,7 @@ export default function InsightsHub() {
     { id: 'milestones', title: 'milestones', desc: 'G-Schema\'s en logboeken', icon: 'time', color: '#9B59B6', path: '/insight/milestones' as Href },
     { id: 'stats', title: 'stats', desc: 'Grafieken en patronen', icon: 'bar-chart', color: '#E67E22', path: '/insight/stats' as Href },
     { id: 'monitor', title: 'weekoverzicht', desc: 'weekevaluaties bekijken', icon: 'checkmark-circle', color: '#9B59B6', path: '/insight/recovery_overview' as Href },
+    { id: 'insights', title: 'inzichten', desc: 'globale inzichten', icon: 'checkmark-circle', color: '#9B59B6', path: '/insight/insights' as Href },
 
   ];
 

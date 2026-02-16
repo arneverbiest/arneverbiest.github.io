@@ -6,7 +6,7 @@ export default function LogHub() {
   const router = useRouter();
 
   const logOptions = [
-    { id: 'act', title: 'Motivatie', desc: 'Welke actie?', icon: 'book', color: '#2ECC71', path: '/log/act' as Href },
+    //{ id: 'act', title: 'Motivatie', desc: 'Welke actie?', icon: 'book', color: '#2ECC71', path: '/log/act' as Href },
     { id: 'diary', title: 'Dagboek', desc: 'Schrijf over je waarden', icon: 'book', color: '#2ECC71', path: '/log/diary' as Href },
     { id: 'gschema', title: 'G-Schema', desc: 'Gedachte onderzoeken', icon: 'brain', color: '#3498DB', path: '/log/five-g' as Href },
     { id: 'goals', title: 'doelen', desc: 'welke doelen heb je?', icon: 'happy', color: '#F1C40F', path: '/log/goals' as Href },

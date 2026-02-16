@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'; // Check of deze 
 import { db, auth } from '../../firebaseConfig';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
+import { NavHeader } from '@/src/components/NavHeader';
 
 export default function FiveGEditScreen() {
   const router = useRouter();
@@ -67,6 +68,7 @@ export default function FiveGEditScreen() {
   return (
     <SafeAreaView style={{flex: 1, backgroundColor: '#F0F4F8'}}>
       <ScrollView style={styles.container} contentContainerStyle={{paddingBottom: 60}}>
+        <NavHeader title="" />
         
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>

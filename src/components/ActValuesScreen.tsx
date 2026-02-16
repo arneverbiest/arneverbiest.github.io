@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { db, auth } from '../../firebaseConfig';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { NavHeader } from './NavHeader';
 
 interface ValueItem { id: string; title: string; description: string; }
 
@@ -43,7 +44,7 @@ const ActValuesScreen: React.FC = () => {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.header}>Mijn Kompas 🧭</Text>
+      <NavHeader title="Mijn Kompas 🧭" />
       {values.map((item) => (
         <View key={item.id} style={styles.valueCard}>
           <TouchableOpacity onPress={() => deleteValue(item.id)} style={styles.deleteBadge}><Text style={{color:'#fff'}}>✕</Text></TouchableOpacity>

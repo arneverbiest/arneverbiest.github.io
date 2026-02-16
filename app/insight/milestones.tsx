@@ -4,6 +4,7 @@ import { auth, db } from '../../firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
 import { useFocusEffect } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { NavHeader } from '@/src/components/NavHeader';
 
 const { width } = Dimensions.get('window');
 
@@ -50,6 +51,7 @@ export default function MilestonesScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
+          <NavHeader title="" />
           <Text style={styles.title}>Mijn Mijlpalen 🏆</Text>
           <Text style={styles.subtitle}>Je bent momenteel {currentDays} dagen clean</Text>
         </View>

@@ -4,6 +4,7 @@ import { db, auth } from '../../firebaseConfig';
 import { collection, query, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { useFocusEffect } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { NavHeader } from '@/src/components/NavHeader';
 
 export default function StatsScreen() {
   const [history, setHistory] = useState<any[]>([]);
@@ -76,6 +77,7 @@ export default function StatsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 60 }}>
+      <NavHeader title="" />
       <Text style={styles.header}>Mijn Voortgang 📈</Text>
 
       {/* SECTIE 1: NUCHTERHEID BADGES */}

@@ -1,149 +1,215 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Dimensions, Alert, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, ActivityIndicator, Platform, Dimensions, Animated, PanResponder, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { db, auth } from '../firebaseConfig';
-import { doc, setDoc } from 'firebase/firestore';
-import { resetTree } from '../src/services/treeservice';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS, interpolate, Extrapolate } from 'react-native-reanimated';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { doc, writeBatch } from 'firebase/firestore';
+import { VALUE_QUESTIONS } from '../src/constants/questions';
 
 const { width } = Dimensions.get('window');
-const SWIPE_THRESHOLD = width * 0.25;
+const SWIPE_THRESHOLD = 120;
 
-const ALL_VALUES_LIST = ["Aandacht", "Eerlijkheid", "Macht", "Stabiliteit", "Aanpassen", "Empathie", "Milieubewust", "Structuur", "Acceptatie", "Enthousiasme", "Mindful", "Tactvol", "Afwisseling", "Erkenning", "Moed", "Tevredenheid", "Altruïsme", "Excelleren", "Nauwkeurigheid", "Toewijding", "Ambitieus", "Familie", "Nederigheid", "Traditie", "Assertiviteit", "Flexibiliteit", "Nieuwsgierigheid", "Trouw", "Attent", "Gastvrijheid", "Nut", "Uitdaging", "Authenticiteit", "Geduld", "Ontspanning", "Veiligheid", "Autonomie", "Gelijkwaardigheid", "Ontwikkeling", "Verantwoordelijkheid", "Avontuurlijkheid", "Georganiseerd", "Openheid", "Verbeelding", "Balans", "Gezag", "Oprechtheid", "Verbinding", "Behulpzaamheid", "Gezelligheid", "Optimisme", "Verdraagzaamheid", "Bekwaamheid", "Gezondheid", "Originaliteit", "Vergeving", "Bemoedigend", "Groei", "Passie", "Vertrouwen", "Bescheidenheid", "Hoffelijkheid", "Plezier", "Verwondering", "Beschermen", "Hoop", "Plichtsgetrouw", "Vriendschap", "Vrijgevigheid", "Betrokkenheid", "Hulpvaardigheid", "Praktisch", "Vrijheid", "Betrouwbaarheid", "Humor", "Professionaliteit", "Vrijheid", "Bewustzijn", "Ijverig", "Rationaliteit", "Waardering", "Bijdragen", "Innovatief", "Rechtvaardigheid", "Warmte", "Comfort", "Integriteit", "Wederkerig", "Compassie", "Intimiteit", "Roem", "Welvaart", "Compromis", "Inzet", "Romantiek", "Wijsheid", "Creativiteit", "Inzicht", "Rust", "Zelfbeheersing", "Dankbaarheid", "Kennis", "Samenwerking", "Zelfkennis", "Discipline", "Kracht", "Schoonheid", "Zelfwaardering", "Dienstbaarheid", "Kunst", "Seksualiteit", "Zinvolheid", "Diepgang", "Kwaliteit", "Sociaal", "Zorgzaamheid", "Doelgerichtheid", "Leiderschap", "Solidariteit", "Duurzaamheid", "Liefde", "Spanning", "Eenvoud", "Loyaliteit", "Spiritualiteit"];
+const CAT_EMOJIS: Record<string, string> = {
+  ZELF: '👤', VERBINDING: '🤝', PRESTATIE: '🏆', HARMONIE: '🌿', DYNAMIEK: '⚡'
+};
 
 export default function SelectValuesScreen() {
-  const [remainingValues, setRemainingValues] = useState(ALL_VALUES_LIST);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [selectedValues, setSelectedValues] = useState<string[]>([]);
   const router = useRouter();
-  const translateX = useSharedValue(0);
+  const [loading, setLoading] = useState(false);
 
-  // 1. De logica functie
-  const handleChoice = useCallback((isImportant: boolean) => {
-    const currentVal = remainingValues[currentIndex];
-    if (!currentVal) return;
+  // States voor de logica
+  const [pool, setPool] = useState<any[]>(VALUE_QUESTIONS); // De waarden die nog getoond moeten worden
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedInRound, setSelectedInRound] = useState<any[]>([]); // Wat je in DEZE ronde 'Ja' hebt gegeven
+  const [confirmedTotal, setConfirmedTotal] = useState<any[]>([]); // Wat al definitief gekozen is uit vorige rondes
+  const [showReview, setShowReview] = useState(false);
 
-    const newSelected = isImportant ? [...selectedValues, currentVal] : selectedValues;
+  // Animatie Ref
+  const position = useRef(new Animated.ValueXY()).current;
 
-    if (currentIndex < remainingValues.length - 1) {
-      setSelectedValues(newSelected);
-      setCurrentIndex(prev => prev + 1);
-      translateX.value = 0;
-    } else {
-      // Gebruik een kleine timeout om te zorgen dat de laatste state wordt meegenomen
-      setTimeout(() => finalizeRound(newSelected), 10);
-    }
-  }, [currentIndex, remainingValues, selectedValues]);
-
-  const finalizeRound = (finalSelection: string[]) => {
-    if (finalSelection.length === 7) {
-      Alert.alert("Check", `7 gekozen.`, [{ text: "Start", onPress: () => saveToFirebase(finalSelection) }]);
-    } else if (finalSelection.length < 7) {
-      setRemainingValues(ALL_VALUES_LIST.filter(v => !finalSelection.includes(v)));
-      setCurrentIndex(0);
-      setSelectedValues(finalSelection);
-    } else {
-      setRemainingValues(finalSelection);
-      setCurrentIndex(0);
-      setSelectedValues([]);
-    }
-  };
-
-  const saveToFirebase = async (values: string[]) => {
-    const user = auth.currentUser;
-    if (!user) return;
-    try {
-      await resetTree();
-      for (const val of values) {
-        const id = val.toLowerCase().replace(/\s/g, '_');
-        await setDoc(doc(db, "users", user.uid, "tree", id), { name: val, level: 3, lastFed: new Date().toISOString() });
-      }
-      router.replace('/tree');
-    } catch (e) { console.log(e); }
-  };
-
-  // 2. DE TOETSENBORD FIX: Luister op 'document' ipv 'window' en check focus
+  // Refs voor keyboard/logic sync
+  const stateRef = useRef({ currentIndex, selectedInRound, pool, confirmedTotal, showReview });
   useEffect(() => {
-    const handleKeyPress = (event: any) => {
-      if (event.key === 'ArrowRight') {
-        event.preventDefault();
-        handleChoice(true);
-      } else if (event.key === 'ArrowLeft') {
-        event.preventDefault();
-        handleChoice(false);
-      }
-    };
+    stateRef.current = { currentIndex, selectedInRound, pool, confirmedTotal, showReview };
+  }, [currentIndex, selectedInRound, pool, confirmedTotal, showReview]);
 
-    // Voeg toe aan het document
-    document.addEventListener('keydown', handleKeyPress);
-    
-    // Cleanup
-    return () => {
-      document.removeEventListener('keydown', handleKeyPress);
-    };
-  }, [handleChoice]); // Koppel aan de callback die altijd de actuele state heeft
+  // --- LOGICA VOOR KEUZE ---
+  const handleNext = useCallback((accepted: boolean) => {
+    const { currentIndex: idx, selectedInRound: sel, pool: p } = stateRef.current;
+    if (!p[idx]) return;
 
-  const gesture = Gesture.Pan()
-    .onUpdate((e) => { translateX.value = e.translationX; })
-    .onEnd((e) => {
-      if (e.translationX > SWIPE_THRESHOLD) {
-        runOnJS(handleChoice)(true);
-      } else if (e.translationX < -SWIPE_THRESHOLD) {
-        runOnJS(handleChoice)(false);
-      } else {
-        translateX.value = withSpring(0);
-      }
+    if (accepted) {
+      setSelectedInRound([...sel, p[idx]]);
+    }
+
+    // Ga naar volgende of toon review
+    if (idx < p.length - 1) {
+      setCurrentIndex(idx + 1);
+    } else {
+      setShowReview(true);
+    }
+  }, []);
+
+  // --- SWIPE HANDLERS ---
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderMove: (e, gesture) => {
+        position.setValue({ x: gesture.dx, y: gesture.dy });
+      },
+      onPanResponderRelease: (e, gesture) => {
+        if (gesture.dx > SWIPE_THRESHOLD) {
+          completeSwipe('right');
+        } else if (gesture.dx < -SWIPE_THRESHOLD) {
+          completeSwipe('left');
+        } else {
+          Animated.spring(position, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
+        }
+      },
+    })
+  ).current;
+
+  const completeSwipe = (direction: 'left' | 'right') => {
+    Animated.timing(position, {
+      toValue: { x: direction === 'right' ? width : -width, y: 0 },
+      duration: 250,
+      useNativeDriver: false,
+    }).start(() => {
+      position.setValue({ x: 0, y: 0 });
+      handleNext(direction === 'right');
     });
+  };
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { rotate: `${interpolate(translateX.value, [-width, 0, width], [-8, 0, 8], Extrapolate.CLAMP)}deg` }
-    ]
-  }));
+  // --- KEYBOARD SUPPORT ---
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const handleKey = (e: KeyboardEvent) => {
+        if (stateRef.current.showReview) return;
+        if (e.key === 'ArrowRight') completeSwipe('right');
+        if (e.key === 'ArrowLeft') completeSwipe('left');
+      };
+      window.addEventListener('keydown', handleKey);
+      return () => window.removeEventListener('keydown', handleKey);
+    }
+  }, []);
+
+  // --- OPSLAAN OF VERDER GAAN ---
+  const processSelection = async () => {
+    const totalSelected = [...selectedInRound]; // We kijken nu alleen naar wat in de laatste ronde 'Ja' kreeg
+
+    if (totalSelected.length === 7) {
+      // EXACT 7: Opslaan naar Firebase
+      setLoading(true);
+      try {
+        const user = auth.currentUser;
+        if (!user) return;
+        const batch = writeBatch(db);
+        totalSelected.forEach(val => {
+          const id = val.value.toLowerCase().replace(/\s/g, '_');
+          batch.set(doc(db, "users", user.uid, "tree", id), {
+            name: val.value, level: 1, xp: 0, category: val.cat
+          });
+        });
+        await batch.commit();
+        router.replace('/(tabs)/tree');
+      } catch (e) { console.error(e); } finally { setLoading(false); }
+    }
+    else if (totalSelected.length > 7) {
+      // MEER DAN 7: De nieuwe pool wordt je huidige selectie (verfijnen)
+      setPool(totalSelected);
+      setSelectedInRound([]);
+      setCurrentIndex(0);
+      setShowReview(false);
+    }
+    else if (totalSelected.length < 7 && totalSelected.length > 0) {
+      // MINDER DAN 7: Je gaat OPNIEUW door de pool van de VORIGE ronde
+      // Maar we houden de selectie van deze ronde even vast als 'geheugensteuntje' of we laten de gebruiker gewoon opnieuw kiezen uit de vorige vijver.
+      Alert.alert(
+        "Te weinig waarden",
+        `Je hebt er nu ${totalSelected.length} gekozen, maar we hebben er 7 nodig. Kies er nog een paar uit je vorige selectie.`,
+        [{
+          text: "Oké", onPress: () => {
+            // We behouden de pool (de lijst waaruit je net koos) 
+            // zodat je opnieuw kunt kijken wat je de vorige keer liet liggen.
+            setSelectedInRound([]);
+            setCurrentIndex(0);
+            setShowReview(false);
+          }
+        }]
+      );
+    } else {
+      // 0 geselecteerd
+      Alert.alert("Oeps", "Je moet wel minstens één waarde kiezen.");
+      setShowReview(false);
+      setCurrentIndex(0);
+    }
+  };
+
+  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#27AE60" /></View>;
+
+  const currentVal = pool[currentIndex];
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Waarden Swipe</Text>
-          <Text style={styles.countText}>{selectedValues.length} / 7</Text>
-        </View>
-
-        <View style={styles.cardContainer}>
-          <GestureDetector gesture={gesture}>
-            <Animated.View style={[styles.card, animatedStyle]}>
-              <MaterialCommunityIcons name="heart-flash" size={50} color="#27AE60" />
-              <Text style={styles.cardText}>{remainingValues[currentIndex]}</Text>
-              <Text style={styles.hintText}>Gebruik ← of →</Text>
-            </Animated.View>
-          </GestureDetector>
-        </View>
-
-        <View style={styles.footer}>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressInner, { width: `${((currentIndex + 1) / remainingValues.length) * 100}%` }]} />
-          </View>
-          <Text style={styles.progressLabel}>{currentIndex + 1} / {remainingValues.length}</Text>
-        </View>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}><Text style={styles.backText}>← Stop</Text></TouchableOpacity>
+        <Text style={styles.counterText}>{[...confirmedTotal, ...selectedInRound].length} / 7</Text>
       </View>
-    </GestureHandlerRootView>
+
+      <View style={styles.cardContainer}>
+        {currentVal ? (
+          <Animated.View {...panResponder.panHandlers} style={[styles.swipeCard, position.getLayout()]}>
+            <Text style={styles.emoji}>{CAT_EMOJIS[currentVal.cat]}</Text>
+            <Text style={styles.cardValText}>{currentVal.value}</Text>
+            <Text style={styles.hintText}>$\leftarrow$ Nee  |  Ja $\rightarrow$</Text>
+          </Animated.View>
+        ) : (
+          <ActivityIndicator color="#27AE60" />
+        )}
+      </View>
+
+      <Modal visible={showReview} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { height: '75%' }]}>
+            <Text style={styles.modalTitle}>Selectie: {[...confirmedTotal, ...selectedInRound].length} waarden</Text>
+            <ScrollView style={{ width: '100%' }}>
+              {[...confirmedTotal, ...selectedInRound].map((v, i) => (
+                <View key={i} style={styles.reviewItem}>
+                  <Text style={{ fontSize: 18 }}>{CAT_EMOJIS[v.cat]} {v.value}</Text>
+                </View>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity style={styles.saveBtn} onPress={processSelection}>
+              <Text style={styles.saveBtnText}>
+                {selectedInRound.length === 7
+                  ? "Dit zijn mijn 7 waarden!"
+                  : selectedInRound.length > 7
+                    ? `Verfijn deze ${selectedInRound.length} waarden`
+                    : `Kies er nog ${7 - selectedInRound.length} bij uit de lijst`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC', padding: 20, justifyContent: 'space-between' },
-  header: { alignItems: 'center', marginTop: 40 },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#1E293B' },
-  countText: { fontSize: 18, color: '#27AE60', fontWeight: 'bold' },
-  cardContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  card: { width: width * 0.8, height: 300, backgroundColor: '#FFF', borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' },
-  cardText: { fontSize: 30, fontWeight: 'bold', color: '#334155', textAlign: 'center', padding: 20 },
-  hintText: { position: 'absolute', bottom: 15, color: '#94A3B8', fontSize: 12 },
-  footer: { marginBottom: 20, alignItems: 'center' },
-  progressBar: { width: '100%', height: 6, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden' },
-  progressInner: { height: '100%', backgroundColor: '#27AE60' },
-  progressLabel: { marginTop: 8, color: '#94A3B8', fontSize: 11 }
+  container: { flex: 1, backgroundColor: '#F8FAFC', padding: 20, alignItems: 'center' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', marginTop: 40, alignItems: 'center' },
+  backText: { color: '#64748B', fontWeight: 'bold', fontSize: 16 },
+  counterText: { fontSize: 32, fontWeight: 'bold', color: '#27AE60' },
+  cardContainer: { width: width * 0.85, height: 450, marginTop: 40, justifyContent: 'center' },
+  swipeCard: { backgroundColor: 'white', borderRadius: 30, padding: 30, height: '100%', alignItems: 'center', justifyContent: 'center', elevation: 12, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 15 },
+  emoji: { fontSize: 80, marginBottom: 20 },
+  cardValText: { fontSize: 36, fontWeight: 'bold', textAlign: 'center', color: '#1E293B' },
+  hintText: { marginTop: 40, color: '#94A3B8', fontWeight: 'bold', fontSize: 14 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.7)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { width: '90%', backgroundColor: 'white', borderRadius: 30, padding: 25, alignItems: 'center' },
+  modalTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 20 },
+  reviewItem: { padding: 15, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', width: '100%' },
+  saveBtn: { backgroundColor: '#1E293B', padding: 20, borderRadius: 15, width: '100%', alignItems: 'center', marginTop: 15 },
+  saveBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 }
 });

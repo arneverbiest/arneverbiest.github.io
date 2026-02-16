@@ -4,6 +4,7 @@ import { db, auth } from '../../firebaseConfig';
 import { collection, query, orderBy, getDocs } from 'firebase/firestore';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { NavHeader } from '@/src/components/NavHeader';
 
 export default function LogbookScreen() {
   const [logs, setLogs] = useState<any[]>([]);
@@ -45,6 +46,7 @@ export default function LogbookScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+      <NavHeader title="" />
       <Text style={styles.header}>Mijn Logboek 📖</Text>
       
       {logs.length === 0 ? (

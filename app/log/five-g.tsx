@@ -4,6 +4,7 @@ import { db, auth } from '../../firebaseConfig';
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { NavHeader } from '@/src/components/NavHeader';
 
 const HelpModal = ({ visible, title, text, onClose }: any) => (
   <Modal visible={visible} transparent animationType="fade">
@@ -112,6 +113,7 @@ export default function FiveGSchema() {
   return (
     <SafeAreaView style={{flex: 1, backgroundColor: '#F0F4F8'}}>
       <ScrollView style={styles.container} contentContainerStyle={{paddingBottom: 60}}>
+        <NavHeader title="" />
         
         <View style={styles.tabContainer}>
           <TouchableOpacity 

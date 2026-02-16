@@ -3,6 +3,7 @@ import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Alert,
 import { db, auth } from '../../firebaseConfig';
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { NavHeader } from './NavHeader';
 
 // Alle beschikbare coping opties (gebaseerd op je Relax-sectie)
 const ALL_COPING_OPTIONS = [
@@ -114,6 +115,7 @@ export default function FiveGSchema() {
 
   return (
     <SafeAreaView style={{flex: 1, backgroundColor: '#F0F4F8'}}>
+      <NavHeader title="5G Analyse" />
       <ScrollView style={styles.container} contentContainerStyle={{paddingBottom: 60}}>
         <Text style={styles.header}>Diepe 5G Analyse</Text>
         

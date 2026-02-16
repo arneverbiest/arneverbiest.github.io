@@ -4,6 +4,7 @@ import { auth, db } from '../../firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { NavHeader } from '@/src/components/NavHeader';
 
 export default function DagboekScreen() {
   const router = useRouter();
@@ -48,6 +49,7 @@ export default function DagboekScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
+        <NavHeader title=''/>
         <Text style={styles.pageTitle}>Mijn Dagboek</Text>
 
         {hasValues === false ? (

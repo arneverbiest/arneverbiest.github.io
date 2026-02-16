@@ -1,77 +1,93 @@
-import React, { useEffect, useState } from 'react';
-import { Stack, useRouter, useSegments } from 'expo-router';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
-import { auth } from '../firebaseConfig';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, TouchableOpacity, Modal, Text, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { Stack, usePathname, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { db, auth } from '../firebaseConfig';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import GlobalSOS from '../src/components/GlobalSOS';
 
 export default function RootLayout() {
-  const [initializing, setInitializing] = useState(true);
-  const [user, setUser] = useState<any>(null);
-  const segments = useSegments();
+  const pathname = usePathname();
   const router = useRouter();
+  const [bugModalVisible, setBugModalVisible] = useState(false);
+  const [bugReport, setBugReport] = useState('');
+  const [sendingBug, setSendingBug] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      if (initializing) setInitializing(false);
+      if (!user) {
+        // Als er geen gebruiker is, stuur ze naar login (optioneel, afhankelijk van je flow)
+        // router.replace('/login'); 
+      } else {
+        // De gedwongen check op onboardingComplete is hier verwijderd.
+        // De gebruiker mag nu vrij navigeren naar de tabs.
+      }
     });
     return unsubscribe;
   }, []);
 
-  useEffect(() => {
-    if (initializing) return;
-
-    const inAuthGroup = segments[0] === 'login';
-
-    if (!user && !inAuthGroup) {
-      router.replace('/login');
-    } else if (user && inAuthGroup) {
-      router.replace('/(tabs)');
+  const sendBugReport = async () => {
+    if (!bugReport.trim()) return;
+    setSendingBug(true);
+    try {
+      await addDoc(collection(db, "bugs"), {
+        userId: auth.currentUser?.uid || 'anon',
+        message: bugReport,
+        page: pathname,
+        createdAt: serverTimestamp(),
+      });
+      setBugReport('');
+      setBugModalVisible(false);
+      Alert.alert("Bedankt!", "Bug gemeld.");
+    } catch (e) {
+      Alert.alert("Fout", "Mislukt.");
+    } finally {
+      setSendingBug(false);
     }
-  }, [user, segments, initializing]);
-
-  if (initializing) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
-    );
-  }
+  };
 
   return (
-    <View style={styles.container}>
-      <Stack 
-        screenOptions={{ 
-          headerShown: true,             // Standaard overal aan
-          headerBackTitle: 'Terug',      // Tekst naast het pijltje (iOS)
-          headerShadowVisible: false,    // Geen harde lijn onder de header
-          headerStyle: { backgroundColor: '#F8FAFC' }, // Matcht met je pagina achtergrond
-          headerTitleStyle: { fontWeight: 'bold', color: '#1E293B' },
-        }}
-      >
-        {/* Login: Geen header nodig */}
-        <Stack.Screen name="login" options={{ headerShown: false }} />
-        
-        {/* Tabs: Geen header nodig (de tabs hebben vaak hun eigen titels) */}
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    <View style={{ flex: 1 }}>
+      <Stack screenOptions={{ headerShown: false }} />
+      
+      {/* Zwevende Bug Button */}
+      <TouchableOpacity style={styles.bugBtn} onPress={() => setBugModalVisible(true)}>
+        <Ionicons name="bug" size={24} color="white" />
+      </TouchableOpacity>
 
-        {/* Andere schermen (zoals recovery_overview) erven de headerShown: true over */}
-        <Stack.Screen 
-          name="log/recovery_overview" 
-          options={{ title: 'Analyse' }} 
-        />
-        <Stack.Screen 
-          name="log/weekly_goals" 
-          options={{ title: 'Weekly Goals' }} 
-        />
-      </Stack>
-
-      {user && <GlobalSOS />}
+      <Modal animationType="slide" transparent={true} visible={bugModalVisible}>
+        <View style={styles.overlay}>
+          <View style={styles.modalBody}>
+            <Text style={styles.modalTitle}>Bug melden 🐞</Text>
+            <TextInput 
+              style={styles.input} 
+              placeholder="Wat gaat er mis?" 
+              multiline 
+              value={bugReport} 
+              onChangeText={setBugReport} 
+            />
+            <View style={styles.btnRow}>
+              <TouchableOpacity style={styles.cancel} onPress={() => setBugModalVisible(false)}>
+                <Text>Annuleer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.send} onPress={sendBugReport} disabled={sendingBug}>
+                {sendingBug ? <ActivityIndicator color="white" /> : <Text style={{color: 'white'}}>Verstuur</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  bugBtn: { position: 'absolute', top: 60, right: 20, width: 50, height: 50, borderRadius: 25, backgroundColor: '#64748B', justifyContent: 'center', alignItems: 'center', zIndex: 9999 },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  modalBody: { backgroundColor: 'white', borderRadius: 20, padding: 20 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
+  input: { backgroundColor: '#F1F5F9', borderRadius: 10, padding: 10, height: 100, textAlignVertical: 'top', marginBottom: 15 },
+  btnRow: { flexDirection: 'row', gap: 10 },
+  cancel: { flex: 1, padding: 12, alignItems: 'center', backgroundColor: '#E2E8F0', borderRadius: 10 },
+  send: { flex: 1, padding: 12, alignItems: 'center', backgroundColor: '#1E293B', borderRadius: 10 },
 });

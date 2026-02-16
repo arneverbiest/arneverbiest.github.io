@@ -7,11 +7,11 @@ export default function LogHub() {
 
   const logOptions = [
     //{ id: 'act', title: 'Motivatie', desc: 'Welke actie?', icon: 'book', color: '#2ECC71', path: '/log/act' as Href },
-    { id: 'diary', title: 'Dagboek', desc: 'Schrijf over je waarden', icon: 'book', color: '#2ECC71', path: '/log/diary' as Href },
+    //{ id: 'diary', title: 'Dagboek', desc: 'Schrijf over je waarden', icon: 'book', color: '#2ECC71', path: '/log/diary' as Href },
     { id: 'gschema', title: 'G-Schema', desc: 'Gedachte onderzoeken', icon: 'brain', color: '#3498DB', path: '/log/five-g' as Href },
     { id: 'goals', title: 'doelen', desc: 'welke doelen heb je?', icon: 'happy', color: '#F1C40F', path: '/log/goals' as Href },
-    { id: 'plan', title: 'Noodplan', desc: 'plan?', icon: 'happy', color: '#F1C40F', path: '/log/plan' as Href },
-   // { id: 'recovery', title: 'herstel', desc: 'herstelmonitor', icon: 'heart', color: '#E74C3C', path: '/log/recovery_log' as Href },
+    { id: 'plan', title: 'Noodplan', desc: 'pas je eigen noodplan aan', icon: 'happy', color: '#F1C40F', path: '/log/plan' as Href },
+    //{ id: 'recovery', title: 'herstel', desc: 'herstelmonitor', icon: 'heart', color: '#E74C3C', path: '/log/recovery_log' as Href },
     { id: 'weekly', title: 'weekdoelen', desc: 'weekdoelen vaststellen', icon: 'calendar', color: '#9B59B6', path: '/log/weekly_goals' as Href },
     //{ id: 'action_plan', title: 'Actieplan', desc: 'Actieplan bekijken', icon: 'checkmark-circle', color: '#9B59B6', path: '/log/action_plan' as Href },
     { id: 'weekly_review', title: 'Weekbeoordeling', desc: 'Weekbeoordeling bekijken', icon: 'checkmark-circle', color: '#9B59B6', path: '/log/recovery_log' as Href },

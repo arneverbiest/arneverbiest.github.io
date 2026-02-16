@@ -27,6 +27,9 @@ export default function GroundingScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <TouchableOpacity onPress={() => router.back()}>
+        <MaterialCommunityIcons name="close" size={28} color="#2C3E50" />
+      </TouchableOpacity>
       <View style={styles.header}>
         <Text style={styles.progress}>{currentStep + 1} / 5</Text>
       </View>

@@ -11,15 +11,15 @@ export default function ActionPlanScreen() {
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [customTool, setCustomTool] = useState('');
-  const [plan, setPlan] = useState({ 
-    motivation: '', 
-    copingOrder: [] as string[], 
-    contacts: [] as { name: string, phone: string }[] 
+  const [plan, setPlan] = useState({
+    motivation: '',
+    copingOrder: [] as string[],
+    contacts: [] as { name: string, phone: string }[]
   });
 
   const relaxExercises = [
-    "4-7-8 Ademhaling", "Body Scan", "5-4-3-2-1 Methode", 
-    "Rots en Water", "Stille wandeling", "Grounding", 
+    "4-7-8 Ademhaling", "Body Scan", "5-4-3-2-1 Methode",
+    "Rots en Water", "Stille wandeling", "Grounding",
     "Safe Haven", "Urge Surfing"
   ];
 
@@ -81,7 +81,7 @@ export default function ActionPlanScreen() {
   };
 
   const addContact = () => setPlan(prev => ({ ...prev, contacts: [...prev.contacts, { name: '', phone: '' }] }));
-  
+
   const updateContact = (val: string, index: number, field: 'name' | 'phone') => {
     const newContacts = [...plan.contacts];
     newContacts[index] = { ...newContacts[index], [field]: val };
@@ -92,13 +92,16 @@ export default function ActionPlanScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 100 }}>
-      <Text style={styles.header}>Mijn Noodplan</Text>
 
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color="#1E293B" /></TouchableOpacity>
+        <Text style={styles.header}>Mijn noodplan</Text>
+      </View>
       {/* 1. MOTIVATIE */}
       <View style={styles.section}>
         <Text style={styles.label}>1. Motivatie</Text>
         {isEditing ? (
-          <TextInput style={styles.input} multiline value={plan.motivation} onChangeText={(t) => setPlan({...plan, motivation: t})} placeholder="Waarom blijf je nuchter?" />
+          <TextInput style={styles.input} multiline value={plan.motivation} onChangeText={(t) => setPlan({ ...plan, motivation: t })} placeholder="Waarom blijf je nuchter?" />
         ) : (
           <View style={styles.displayCard}><Text style={styles.displayText}>{plan.motivation || "Geen motivatie ingevuld."}</Text></View>
         )}
@@ -128,13 +131,13 @@ export default function ActionPlanScreen() {
               {relaxExercises.map((ex, i) => {
                 const isAdded = plan.copingOrder.includes(`🧘 ${ex}`);
                 return (
-                  <TouchableOpacity 
-                    key={i} 
-                    style={[styles.chip, isAdded && styles.chipDisabled]} 
+                  <TouchableOpacity
+                    key={i}
+                    style={[styles.chip, isAdded && styles.chipDisabled]}
                     onPress={() => addStep(`🧘 ${ex}`)}
                     disabled={isAdded}
                   >
-                    <Text style={[styles.chipText, isAdded && {color: '#94A3B8'}]}>{isAdded ? 'Toegevoegd' : `+ ${ex}`}</Text>
+                    <Text style={[styles.chipText, isAdded && { color: '#94A3B8' }]}>{isAdded ? 'Toegevoegd' : `+ ${ex}`}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -144,15 +147,15 @@ export default function ActionPlanScreen() {
           <View style={styles.section}>
             <Text style={styles.label}>4. Eigen hulpmiddel</Text>
             <View style={styles.addOwnRow}>
-              <TextInput 
-                style={styles.ownInput} 
-                placeholder="Bijv. Wandelen met de hond" 
-                value={customTool} 
-                onChangeText={setCustomTool} 
+              <TextInput
+                style={styles.ownInput}
+                placeholder="Bijv. Wandelen met de hond"
+                value={customTool}
+                onChangeText={setCustomTool}
               />
-              <TouchableOpacity 
-                style={styles.addIconBtn} 
-                onPress={() => { if(customTool){ addStep(customTool); setCustomTool(''); } }}
+              <TouchableOpacity
+                style={styles.addIconBtn}
+                onPress={() => { if (customTool) { addStep(customTool); setCustomTool(''); } }}
               >
                 <Ionicons name="add-circle" size={40} color="#1E293B" />
               </TouchableOpacity>
@@ -163,9 +166,9 @@ export default function ActionPlanScreen() {
             <Text style={styles.label}>5. Contactpersonen</Text>
             {plan.contacts.map((c, i) => (
               <View key={i} style={styles.contactRow}>
-                <TextInput style={[styles.contactInput, {flex: 2}]} placeholder="Naam" value={c.name} onChangeText={(v) => updateContact(v, i, 'name')} />
-                <TextInput style={[styles.contactInput, {flex: 3}]} placeholder="Telefoon" keyboardType="phone-pad" value={c.phone} onChangeText={(v) => updateContact(v, i, 'phone')} />
-                <TouchableOpacity onPress={() => { if(c.name) addStep(`📞 Bel ${c.name}`); }}>
+                <TextInput style={[styles.contactInput, { flex: 2 }]} placeholder="Naam" value={c.name} onChangeText={(v) => updateContact(v, i, 'name')} />
+                <TextInput style={[styles.contactInput, { flex: 3 }]} placeholder="Telefoon" keyboardType="phone-pad" value={c.phone} onChangeText={(v) => updateContact(v, i, 'phone')} />
+                <TouchableOpacity onPress={() => { if (c.name) addStep(`📞 Bel ${c.name}`); }}>
                   <Ionicons name="call-outline" size={24} color="#27AE60" />
                 </TouchableOpacity>
               </View>
@@ -178,7 +181,7 @@ export default function ActionPlanScreen() {
       {/* KNOPPEN ONDERAAN */}
       <View style={{ marginTop: 20 }}>
         {isEditing ? (
-          <View style={{gap: 10}}>
+          <View style={{ gap: 10 }}>
             <TouchableOpacity style={styles.saveBtn} onPress={savePlan} disabled={saving}>
               {saving ? <ActivityIndicator color="white" /> : <Text style={styles.saveBtnText}>Plan Opslaan</Text>}
             </TouchableOpacity>

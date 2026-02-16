@@ -4,6 +4,8 @@ import { db, auth } from '../../firebaseConfig';
 import { collection, query, orderBy, getDocs } from 'firebase/firestore';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter ,router } from 'expo-router';
+import { TouchableOpacity } from 'react-native-gesture-handler';
 
 export default function DailyOverview() {
   const [checkins, setCheckins] = useState<any[]>([]);
@@ -34,7 +36,11 @@ export default function DailyOverview() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
       <View style={styles.container}>
-        <Text style={styles.header}>Geschiedenis</Text>
+
+              <View style={styles.header}>
+                <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color="#1E293B" /></TouchableOpacity>
+                <Text style={styles.header}>Week Analyse</Text>
+              </View>
         <FlatList
           data={checkins}
           keyExtractor={(item) => item.id}

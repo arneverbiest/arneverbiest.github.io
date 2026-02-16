@@ -1,300 +1,227 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator, Linking } from 'react-native';
 import { db, auth } from '../../firebaseConfig';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { NavHeader } from '../components/NavHeader';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
-const DEFAULT_RELAX = [
-  '🌬️ Ademhaling', '🌬️ Sober', '🌬️ Gevoelsurfen',
-  '🌬️ Veilige haven', '🌬️ 5-4-3-2-1', '🚶 Mindful Wandelen',
-  '💤 Bodyscan', '💎 Rots & Water'
-];
-const router = useRouter();
-
 export default function ActionPlanScreen() {
-  const [plan, setPlan] = useState({
-    reasons: '',
-    copingOrder: [] as string[],
-    contacts: [] as { name: string, phone: string }[],
-    customPool: [] as string[],
-  });
-  
-  const [isEditing, setIsEditing] = useState(true);
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [customTool, setCustomTool] = useState('');
+  const [plan, setPlan] = useState({ 
+    motivation: '', 
+    copingOrder: [] as string[], 
+    contacts: [] as { name: string, phone: string }[] 
+  });
 
-  const [newToolInput, setNewToolInput] = useState('');
-  const [newName, setNewName] = useState('');
-  const [newPhone, setNewPhone] = useState('');
+  const relaxExercises = [
+    "4-7-8 Ademhaling", "Body Scan", "5-4-3-2-1 Methode", 
+    "Rots en Water", "Stille wandeling", "Grounding", 
+    "Safe Haven", "Urge Surfing"
+  ];
 
-  useEffect(() => { loadPlan(); }, []);
+  useEffect(() => {
+    const loadPlan = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+      try {
+        const docSnap = await getDoc(doc(db, "users", user.uid, "settings", "actionPlan"));
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setPlan({
+            motivation: data.motivation || '',
+            copingOrder: Array.isArray(data.copingOrder) ? data.copingOrder : [],
+            contacts: Array.isArray(data.contacts) ? data.contacts : []
+          });
+        }
+      } catch (e) { console.error(e); } finally { setLoading(false); }
+    };
+    loadPlan();
+  }, []);
 
-const loadPlan = async () => {
-const user = auth.currentUser;
-if (!user) return;
-try {
-  // We halen data op uit het hoofd-document (waar onboarding opslaat)
-  const snap = await getDoc(doc(db, "users", user.uid));
-  if (snap.exists()) {
-    const data = snap.data();
-      const planData = data.emergencyPlan;
-      
-      setPlan({
-        reasons: planData.motivation || '',
-        copingOrder: planData.toolbox || [],
-        contacts: planData.contacts || [],
-        customPool: planData.extraTools || [],
-      });
+  const handleStepPress = (s: string) => {
+    if (isEditing) return;
+    const step = s.toLowerCase();
+    if (s.includes('📞')) {
+      const contact = plan.contacts.find(c => s.includes(c.name));
+      if (contact?.phone) Linking.openURL(`tel:${contact.phone}`);
+    } else if (step.includes('ademhaling')) router.push('../Relax/breathe');
+    else if (step.includes('body scan')) router.push('../Relax/bodyscan');
+    else if (step.includes('rots en water')) router.push('../Relax/rockwater');
+    else if (step.includes('wandeling')) router.push('../Relax/silentwalk');
+    else if (step.includes('grounding') || step.includes('5-4-3-2-1')) router.push('../Relax/grounding');
+    else if (step.includes('safe haven')) router.push('../Relax/safehaven');
+    else if (step.includes('urge surfing')) router.push('../Relax/urgesurf');
+  };
+
+  const savePlan = async () => {
+    setSaving(true);
+    const user = auth.currentUser;
+    if (!user) return;
+    try {
+      await setDoc(doc(db, "users", user.uid, "settings", "actionPlan"), { ...plan, updatedAt: serverTimestamp() }, { merge: true });
       setIsEditing(false);
-    }
-  } catch (e) { 
-    console.error("Laadfout:", e); 
-  } finally {
-    setLoading(false);
-  }
-};
-
- const savePlan = async () => {
-  const user = auth.currentUser;
-  if (!user) return;
-  try {
-    // Opslaan op de centrale plek
-    await setDoc(doc(db, "users", user.uid), {
-      emergencyPlan: {
-        motivation: plan.reasons,
-        toolbox: plan.copingOrder,
-        contacts: plan.contacts,
-        extraTools: plan.customPool
-      }
-    }, { merge: true });
-    setIsEditing(false);
-    Alert.alert("Opgeslagen", "Je noodplan is bijgewerkt.");
-  } catch (e) { 
-    Alert.alert("Fout", "Opslaan mislukt."); 
-  }
-};
-
-  // 1. VOEG TOE AAN POOL (Coping OF Contact)
-  const addToPool = (type: 'tool' | 'contact') => {
-    if (type === 'tool' && newToolInput.trim()) {
-      const tool = newToolInput.trim();
-      if (!(plan.customPool || []).includes(tool)) {
-        setPlan(prev => ({
-          ...prev,
-          customPool: [...(prev.customPool || []), tool]
-        }));
-        setNewToolInput('');
-      }
-    } else if (type === 'contact' && newName.trim() && newPhone.trim()) {
-      const contactLabel = `📞 ${newName.trim()}`;
-      // We slaan het contact op in de customPool als een string voor de keuze-balk
-      // En voegen de data toe aan de contacts array voor de bel-functie
-      if (!(plan.customPool || []).includes(contactLabel)) {
-        setPlan(prev => ({
-          ...prev,
-          customPool: [...(prev.customPool || []), contactLabel],
-          contacts: [...(prev.contacts || []), { name: newName.trim(), phone: newPhone.trim() }]
-        }));
-        setNewName(''); setNewPhone('');
-      }
-    }
+      Alert.alert("Opgeslagen", "Noodplan bijgewerkt.");
+    } catch (e) { Alert.alert("Fout", "Mislukt."); } finally { setSaving(false); }
   };
 
-  // 2. SELECTEER UIT POOL
-  const selectFromPool = (item: string) => {
-    if (!(plan.copingOrder || []).includes(item)) {
-      setPlan(prev => ({ ...prev, copingOrder: [...(prev.copingOrder || []), item] }));
-    }
+  const addStep = (text: string) => {
+    // Voorkom dubbele toevoeging
+    if (plan.copingOrder.includes(text)) return;
+    setPlan(prev => ({ ...prev, copingOrder: [...prev.copingOrder, text] }));
   };
 
-  const moveTool = (index: number, direction: 'up' | 'down') => {
-    const newOrder = [...plan.copingOrder];
-    if (direction === 'up' && index > 0) {
-      [newOrder[index], newOrder[index - 1]] = [newOrder[index - 1], newOrder[index]];
-    } else if (direction === 'down' && index < newOrder.length - 1) {
-      [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
-    }
-    setPlan({ ...plan, copingOrder: newOrder });
+  const removeStep = (index: number) => {
+    const newSteps = [...plan.copingOrder];
+    newSteps.splice(index, 1);
+    setPlan({ ...plan, copingOrder: newSteps });
   };
 
-  if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color="#27AE60" /></View>;
+  const addContact = () => setPlan(prev => ({ ...prev, contacts: [...prev.contacts, { name: '', phone: '' }] }));
+  
+  const updateContact = (val: string, index: number, field: 'name' | 'phone') => {
+    const newContacts = [...plan.contacts];
+    newContacts[index] = { ...newContacts[index], [field]: val };
+    setPlan({ ...plan, contacts: newContacts });
+  };
 
-  // Combineer alles voor de keuze-balk
-  const fullPool = [...DEFAULT_RELAX, ...(plan.customPool || [])];
+  if (loading) return <View style={styles.center}><ActivityIndicator color="#EF4444" size="large" /></View>;
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-      <NavHeader title="Noodplan" />
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.header}>Mijn Noodplan 🚨</Text>
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 100 }}>
+      <Text style={styles.header}>Mijn Noodplan</Text>
 
+      {/* 1. MOTIVATIE */}
+      <View style={styles.section}>
+        <Text style={styles.label}>1. Motivatie</Text>
         {isEditing ? (
-          <View style={styles.editBox}>
-            <Text style={styles.label}>1. Mijn Motivatie:</Text>
-            <TextInput
-              style={[styles.input, { height: 70 }]}
-              multiline value={plan.reasons}
-              onChangeText={(t) => setPlan({ ...plan, reasons: t })}
-              placeholder="Waarom doe je dit?"
-            />
+          <TextInput style={styles.input} multiline value={plan.motivation} onChangeText={(t) => setPlan({...plan, motivation: t})} placeholder="Waarom blijf je nuchter?" />
+        ) : (
+          <View style={styles.displayCard}><Text style={styles.displayText}>{plan.motivation || "Geen motivatie ingevuld."}</Text></View>
+        )}
+      </View>
 
-            <Text style={styles.label}>2. Tool of Contact toevoegen aan vijver:</Text>
-            <View style={styles.row}>
-              <TextInput
-                style={[styles.input, { flex: 1 }]}
-                placeholder="Bijv: Wandelen..."
-                value={newToolInput}
-                onChangeText={setNewToolInput}
-              />
-              <TouchableOpacity style={styles.addBtn} onPress={() => addToPool('tool')}>
-                <MaterialCommunityIcons name="plus" size={24} color="white" />
+      {/* 2. STAPPENPLAN */}
+      <View style={styles.section}>
+        <Text style={styles.label}>2. Acties bij trek</Text>
+        {plan.copingOrder.map((step, i) => (
+          <TouchableOpacity key={i} style={styles.stepItem} onPress={() => handleStepPress(step)} disabled={isEditing}>
+            <Text style={styles.stepText}>{i + 1}. {step}</Text>
+            {isEditing && (
+              <TouchableOpacity onPress={() => removeStep(i)}>
+                <MaterialCommunityIcons name="trash-can-outline" size={22} color="#EF4444" />
               </TouchableOpacity>
-            </View>
+            )}
+          </TouchableOpacity>
+        ))}
+      </View>
 
-            <View style={[styles.row, { marginTop: 10 }]}>
-              <TextInput style={[styles.input, { flex: 1 }]} placeholder="Naam" value={newName} onChangeText={setNewName} />
-              <TextInput style={[styles.input, { flex: 1 }]} placeholder="Tel" value={newPhone} onChangeText={setNewPhone} keyboardType="phone-pad" />
-              <TouchableOpacity style={[styles.addBtn, { backgroundColor: '#27AE60' }]} onPress={() => addToPool('contact')}>
-                <MaterialCommunityIcons name="account-plus" size={20} color="white" />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.label}>3. Jouw Gereedschapskist (tik om in plan te zetten):</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionScroll}>
-              {fullPool.map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  style={[styles.suggestionChip, (plan.copingOrder || []).includes(s) && styles.selectedChip]}
-                  onPress={() => selectFromPool(s)}
-                >
-                  <Text style={[styles.suggestionText, (plan.copingOrder || []).includes(s) && { color: 'white' }]}>{s}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <Text style={styles.label}>4. De volgorde van jouw stappenplan:</Text>
-            <View style={styles.stepContainer}>
-              {(plan.copingOrder || []).map((tool, i) => (
-                <View key={i} style={styles.activeStepRow}>
-                  <TouchableOpacity onPress={() => setPlan(prev => ({ ...prev, copingOrder: prev.copingOrder.filter((_, idx) => idx !== i) }))}>
-                    <MaterialCommunityIcons name="minus-circle" size={22} color="#EF4444" />
+      {/* BEWERK SECTIES (enkel zichtbaar bij edit) */}
+      {isEditing && (
+        <>
+          <View style={styles.section}>
+            <Text style={styles.label}>3. Oefeningen (max. 1x)</Text>
+            <View style={styles.chipRow}>
+              {relaxExercises.map((ex, i) => {
+                const isAdded = plan.copingOrder.includes(`🧘 ${ex}`);
+                return (
+                  <TouchableOpacity 
+                    key={i} 
+                    style={[styles.chip, isAdded && styles.chipDisabled]} 
+                    onPress={() => addStep(`🧘 ${ex}`)}
+                    disabled={isAdded}
+                  >
+                    <Text style={[styles.chipText, isAdded && {color: '#94A3B8'}]}>{isAdded ? 'Toegevoegd' : `+ ${ex}`}</Text>
                   </TouchableOpacity>
-                  <Text style={styles.stepTextItem}>{i + 1}. {tool}</Text>
-                  <TouchableOpacity onPress={() => moveTool(i, 'up')}><MaterialCommunityIcons name="chevron-up" size={26} color="#64748B" /></TouchableOpacity>
-                  <TouchableOpacity onPress={() => moveTool(i, 'down')}><MaterialCommunityIcons name="chevron-down" size={26} color="#64748B" /></TouchableOpacity>
-                </View>
-              ))}
+                );
+              })}
             </View>
+          </View>
 
-            <TouchableOpacity style={styles.saveBtn} onPress={savePlan}>
-              <Text style={styles.saveBtnText}>Plan Opslaan & Activeren</Text>
+          <View style={styles.section}>
+            <Text style={styles.label}>4. Eigen hulpmiddel</Text>
+            <View style={styles.addOwnRow}>
+              <TextInput 
+                style={styles.ownInput} 
+                placeholder="Bijv. Wandelen met de hond" 
+                value={customTool} 
+                onChangeText={setCustomTool} 
+              />
+              <TouchableOpacity 
+                style={styles.addIconBtn} 
+                onPress={() => { if(customTool){ addStep(customTool); setCustomTool(''); } }}
+              >
+                <Ionicons name="add-circle" size={40} color="#1E293B" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.label}>5. Contactpersonen</Text>
+            {plan.contacts.map((c, i) => (
+              <View key={i} style={styles.contactRow}>
+                <TextInput style={[styles.contactInput, {flex: 2}]} placeholder="Naam" value={c.name} onChangeText={(v) => updateContact(v, i, 'name')} />
+                <TextInput style={[styles.contactInput, {flex: 3}]} placeholder="Telefoon" keyboardType="phone-pad" value={c.phone} onChangeText={(v) => updateContact(v, i, 'phone')} />
+                <TouchableOpacity onPress={() => { if(c.name) addStep(`📞 Bel ${c.name}`); }}>
+                  <Ionicons name="call-outline" size={24} color="#27AE60" />
+                </TouchableOpacity>
+              </View>
+            ))}
+            <TouchableOpacity style={styles.addBtn} onPress={addContact}><Text style={styles.addBtnText}>+ Contact toevoegen</Text></TouchableOpacity>
+          </View>
+        </>
+      )}
+
+      {/* KNOPPEN ONDERAAN */}
+      <View style={{ marginTop: 20 }}>
+        {isEditing ? (
+          <View style={{gap: 10}}>
+            <TouchableOpacity style={styles.saveBtn} onPress={savePlan} disabled={saving}>
+              {saving ? <ActivityIndicator color="white" /> : <Text style={styles.saveBtnText}>Plan Opslaan</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsEditing(false)}>
+              <Text style={styles.cancelBtnText}>Annuleren</Text>
             </TouchableOpacity>
           </View>
         ) : (
-/* WEERGAVE MODUS */
-<View style={styles.viewCard}>
-  <Text style={styles.motivationText}>"{plan.reasons || 'Mijn motivatie...'}"</Text>
-  <View style={styles.divider} />
-  <Text style={styles.sectionTitle}>MIJN STAPPENPLAN (Klik om te openen):</Text>
-  
-  {plan.copingOrder.map((s, i) => {
-    const isPhone = s.startsWith('📞');
-    const isBreathing = s.includes('Ademhaling');
-    const isSober = s.includes('Sober');
-    const isUrgeSurfing = s.includes('Gevoelsurfen');
-    const isSafeHaven = s.includes('Veilige haven');
-    const isGrounding = s.includes('5-4-3-2-1');
-    const isSilentwalk = s.includes('Mindful Wandelen');
-    const isBodyscan = s.includes('Bodyscan');
-    const isRotsWater = s.includes('Rots & Water');
-
-    // Voeg hier eventueel meer checks toe voor andere pagina's
-
-    const handlePress = () => {
-      if (isPhone) {
-        const contact = plan.contacts.find(c => s.includes(c.name));
-        if (contact) Linking.openURL(`tel:${contact.phone}`);
-      } else if (isBreathing) {
-        router.push('../Relax/breathe'); // Zorg dat router is geïmporteerd via useRouter()
-      } else if (isSober) {
-        router.push('../Relax/sober');
-      } 
-      else if (isBodyscan) {
-        router.push('../Relax/bodyscan');
-      } 
-      else if (isRotsWater) {
-        router.push('../Relax/rockwater');
-      } 
-      else if (isSilentwalk) {
-        router.push('../Relax/silentwalk');
-      } 
-      else if (isGrounding) {
-        router.push('../../Relax/grounding');
-      } 
-      else if (isSafeHaven) {
-        router.push('../../Relax/safehaven');
-      } 
-      else if (isUrgeSurfing) {
-        router.push('../../Relax/urgesurf');
-      } 
-      // Voeg hier je andere routes toe
-    };
-
-
-
-    return (
-      <TouchableOpacity 
-        key={i} 
-        style={[styles.stepRow, (isPhone || isBreathing || isSober) && styles.interactiveStep]} 
-        onPress={handlePress}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Text style={[styles.stepText, isPhone && { color: '#007AFF' }]}>
-            {i + 1}. {s}
-          </Text>
-          {(isPhone || isBreathing || isSober) && (
-            <MaterialCommunityIcons name="arrow-right-circle" size={18} color="#94A3B8" />
-          )}
-        </View>
-      </TouchableOpacity>
-    );
-  })}
-
-  <TouchableOpacity style={styles.editModeBtn} onPress={() => setIsEditing(true)}>
-    <Text style={{ color: 'white', fontWeight: 'bold' }}>Plan Aanpassen</Text>
-  </TouchableOpacity>
-</View>
+          <TouchableOpacity style={styles.editBtnLarge} onPress={() => setIsEditing(true)}>
+            <MaterialCommunityIcons name="pencil" size={20} color="white" />
+            <Text style={styles.saveBtnText}>Noodplan Aanpassen</Text>
+          </TouchableOpacity>
         )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, backgroundColor: '#F8FAFC' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { fontSize: 26, fontWeight: 'bold', textAlign: 'center', marginVertical: 10, color: '#1E293B' },
-  editBox: { gap: 8 },
-  label: { fontWeight: 'bold', color: '#64748B', marginTop: 12, fontSize: 12, textTransform: 'uppercase' },
-  input: { backgroundColor: '#fff', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#CBD5E1' },
-  row: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  addBtn: { backgroundColor: '#007AFF', width: 45, height: 45, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  suggestionScroll: { flexDirection: 'row', marginVertical: 8 },
-  suggestionChip: { backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#007AFF', marginRight: 8 },
-  selectedChip: { backgroundColor: '#007AFF' },
-  suggestionText: { color: '#007AFF', fontSize: 12, fontWeight: '600' },
-  stepContainer: { marginVertical: 5 },
-  activeStepRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', padding: 8, borderRadius: 10, marginBottom: 4, borderWidth: 1, borderColor: '#E2E8F0' },
-  stepTextItem: { flex: 1, marginLeft: 10, fontWeight: '600', color: '#1E293B' },
-  saveBtn: { backgroundColor: '#27AE60', padding: 16, borderRadius: 12, marginTop: 15, alignItems: 'center' },
+  container: { flex: 1, backgroundColor: '#F8FAFC', padding: 20 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { fontSize: 28, fontWeight: 'bold', marginTop: 50, marginBottom: 25 },
+  section: { marginBottom: 25 },
+  label: { fontSize: 16, fontWeight: 'bold', marginBottom: 10, color: '#475569' },
+  input: { backgroundColor: 'white', borderRadius: 12, padding: 15, fontSize: 16, elevation: 1, minHeight: 80 },
+  displayCard: { backgroundColor: 'white', borderRadius: 12, padding: 15, elevation: 1 },
+  displayText: { fontSize: 16, color: '#1E293B' },
+  stepItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: 15, borderRadius: 12, marginBottom: 8, elevation: 1 },
+  stepText: { fontSize: 15, color: '#1E293B', flex: 1 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { backgroundColor: '#E2E8F0', padding: 10, borderRadius: 20 },
+  chipDisabled: { backgroundColor: '#F1F5F9', opacity: 0.6 },
+  chipText: { fontSize: 12, color: '#475569' },
+  addOwnRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  ownInput: { flex: 1, backgroundColor: 'white', padding: 12, borderRadius: 12, elevation: 1 },
+  contactRow: { flexDirection: 'row', gap: 8, marginBottom: 10, alignItems: 'center' },
+  contactInput: { backgroundColor: 'white', padding: 12, borderRadius: 10, elevation: 1 },
+  addBtn: { padding: 12, alignItems: 'center', borderStyle: 'dashed', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 12 },
+  addBtnText: { color: '#64748B', fontSize: 14 },
+  editBtnLarge: { backgroundColor: '#64748B', padding: 18, borderRadius: 15, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 },
+  saveBtn: { backgroundColor: '#1E293B', padding: 18, borderRadius: 15, alignItems: 'center' },
   saveBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
-  viewCard: { backgroundColor: '#fff', padding: 20, borderRadius: 20, elevation: 4, borderLeftWidth: 6, borderLeftColor: '#E74C3C' },
-  motivationText: { fontStyle: 'italic', textAlign: 'center', fontSize: 16, color: '#475569', marginBottom: 15 },
-  divider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 15 },
-  sectionTitle: { fontSize: 11, fontWeight: '900', color: '#94A3B8', marginBottom: 10, letterSpacing: 1 },
-  stepRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  stepText: { fontSize: 17, fontWeight: '600', color: '#1E293B' },
-  editModeBtn: { backgroundColor: '#1E293B', padding: 15, borderRadius: 12, marginTop: 20, alignItems: 'center' },
-  interactiveStep: { backgroundColor: '#E0F2FE' },
+  cancelBtn: { padding: 10, alignItems: 'center' },
+  cancelBtnText: { color: '#EF4444', fontWeight: 'bold' },
+  addIconBtn: { padding: 0 }
 });

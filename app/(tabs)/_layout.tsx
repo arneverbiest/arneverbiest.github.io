@@ -24,7 +24,7 @@ export default function TabLayout() {
       <Tabs.Screen name="log" options={{ title: 'Loggen', tabBarIcon: () => <Text>✍️</Text> }} />
       <Tabs.Screen name="insights" options={{ title: 'Inzichten', tabBarIcon: () => <Text>📊</Text> }} />
       <Tabs.Screen name="tree" options={{ title: 'Waardeboom', tabBarIcon: () => <Text>🌳</Text> }} />
-      <Tabs.Screen name="relax" options={{ title: 'Relax', tabBarIcon: () => <Text>🧘</Text> }} />
+      <Tabs.Screen name="relax" options={{ title: 'Relax', tabBarIcon: () => <Text>  🧘</Text> }} />
       <Tabs.Screen name="settings" options={{ title: 'Instellingen', tabBarIcon: () => <Text>⚙️</Text> }} />
     </Tabs>
   );
